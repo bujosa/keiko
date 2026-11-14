@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/grid.png" alt="Keiko in the grid view (dark theme): the PodDojo card with its installed and latest versions, a yellow-belt Update available badge, lesson progress, and Open and Update buttons" width="100%">
+  <img src="docs/images/grid.png" alt="Keiko in the grid view (dark theme) before the first install: a welcome with the belt as a watermark, the PodDojo card with a white-belt Not installed badge and an Install button, and a dashed card for the next dojo" width="100%">
 </p>
 <p align="center">
-  <img src="docs/images/list.png" alt="The same dojo in the list view (light theme), with status, installed and latest versions and the release date" width="100%"><br>
-  <sub>Switch between the grid and a list; the theme follows macOS or stays dark or light.</sub>
+  <img src="docs/images/list.png" alt="The list view (light theme) with PodDojo installed: Continue your practice with the next lesson, a progress ring and Resume, then PodDojo with a yellow-belt Update available badge" width="100%"><br>
+  <sub>Pick up where you left off. Grid or list; the theme follows macOS or stays dark or light.</sub>
 </p>
 
 *Keiko* (稽古) is the word for practice in the dojo: the training you come back to every day.

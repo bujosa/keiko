@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.1
+
+A professional identity.
+
+- **New icon**: the kanji 稽 (*keiko*, practice) on a vermilion hanko seal, on Apple's icon grid with
+  a soft shadow. It reads at every size, from the menu bar to the Dock; the top bar and the update
+  banner use the same artwork.
+- Dojo icons are shown without Apple's margin, so they fill their place on the card.
+- Cards read in order: the description, then one line of facts (size and release date). Status
+  badges carry a solid belt-coloured band; "BY KEIKO" is a quiet outline.
+
 ## 0.3.0
 
 Keiko does one job well: install the dojos, keep them up to date, open them.

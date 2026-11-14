@@ -1432,7 +1432,7 @@ dependencies = [
 
 [[package]]
 name = "keiko"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "eframe",
  "egui",
@@ -1443,7 +1443,7 @@ dependencies = [
 
 [[package]]
 name = "keiko-core"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "semver",
  "serde",
@@ -1453,7 +1453,7 @@ dependencies = [
 
 [[package]]
 name = "keiko-native"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "keiko-core",
  "semver",
@@ -3542,7 +3542,7 @@ checksum = "ec7a2a501ed189703dba8b08142f057e887dfc4b2cc4db2d343ac6376ba3e0b9"
 
 [[package]]
 name = "xtask"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "resvg",
 ]

@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.0
+
+A more beautiful Keiko.
+
+- **Continue your practice**: the top of the page picks up where you left off, with the next lesson,
+  a progress ring and Resume; before the first dojo, a welcome with the belt as a watermark.
+- **Your next dojo**: a card (or row) at the end of the catalog that links to the guide for adding one.
+- Status badges carry a small knotted belt in the belt's colour; section headings with a hairline.
+- Cards in a row share one height, with space between them.
+- A crisp painted mark in the top bar (the vermilion seal with a knotted belt).
+- The top bar moves the window; a double click zooms it.
+
 ## 0.1.0
 
 First release: Keiko, the launcher for the dojo apps.

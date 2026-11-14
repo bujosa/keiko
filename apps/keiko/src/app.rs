@@ -18,6 +18,7 @@ use crate::widgets::{self, Icon, Kind};
 /// Re-check GitHub when the last check is older than this.
 const STALE: u64 = 6 * 3600;
 const MORE_W: f32 = 40.0;
+const GUIDE: &str = "https://github.com/bujosa/keiko/blob/main/docs/adding-a-dojo.md";
 
 pub struct Entry {
     pub app: App,
@@ -90,6 +91,9 @@ pub struct KeikoApp {
     confirm_uninstall: Option<String>,
     pending: usize,
     was_focused: bool,
+    /// Tallest card measured last frame: every card in the grid gets this height.
+    card_h: f32,
+    next_card_h: f32,
     startup_error: Option<String>,
     /// `KEIKO_SCREENSHOT=<png>`: capture the window once the first check settles, then quit.
     shot: Option<(PathBuf, Instant, bool)>,
@@ -102,7 +106,7 @@ fn app_png(id: &str) -> Option<&'static [u8]> {
     }
 }
 
-static LOGO: &[u8] = include_bytes!("../../../assets/app-icon/keiko-128.png");
+static LOGO: &[u8] = include_bytes!("../../../assets/app-icon/keiko-256.png");
 
 fn texture(ctx: &egui::Context, name: &str, png: &[u8]) -> Option<egui::TextureHandle> {
     let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();
@@ -163,6 +167,8 @@ impl KeikoApp {
             confirm_uninstall: None,
             pending: 0,
             was_focused: true,
+            card_h: 0.0,
+            next_card_h: 0.0,
             startup_error: startup_error.or(catalog_error),
             shot,
         };
@@ -332,6 +338,8 @@ impl KeikoApp {
             self.refresh();
         }
 
+        self.card_h = self.next_card_h;
+        self.next_card_h = 0.0;
         let mut actions = vec![];
         self.top_bar(ui);
         self.footer(ui);
@@ -346,6 +354,7 @@ impl KeikoApp {
                     if let Some(e) = &self.startup_error {
                         ui.colored_label(t.bad, e);
                     }
+                    self.hero(ui, &mut actions);
                     self.sections(ui, &mut actions);
                     ui.add_space(26.0);
                 });
@@ -408,10 +417,17 @@ impl KeikoApp {
                     .stroke(Stroke::new(1.0, t.border)),
             )
             .show(ui, |ui| {
+                // The title bar is hidden: the top bar moves the window, a double click zooms it.
+                let drag = ui.interact(ui.max_rect(), egui::Id::new("titlebar"), Sense::click_and_drag());
+                if drag.drag_started_by(egui::PointerButton::Primary) {
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::StartDrag);
+                }
+                if drag.double_clicked() {
+                    let zoomed = ui.ctx().input(|i| i.viewport().maximized.unwrap_or(false));
+                    ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!zoomed));
+                }
                 ui.horizontal_centered(|ui| {
-                    if let Some(tex) = self.textures.get("keiko") {
-                        ui.add(egui::Image::new((tex.id(), vec2(30.0, 30.0))));
-                    }
+                    widgets::mark(ui, &t, 30.0);
                     ui.add_space(4.0);
                     let mut job = LayoutJob::default();
                     job.append(
@@ -594,39 +610,246 @@ impl KeikoApp {
         }
         let (installed, other): (Vec<usize>, Vec<usize>) =
             order.into_iter().partition(|i| self.entries[*i].installed.is_some());
+        let searching = !self.search.trim().is_empty();
         let mut first = true;
-        for (title, group) in [("Installed", installed), ("Not installed", other)] {
-            if group.is_empty() {
+        for (title, group, more) in [("Installed", installed, false), ("Available", other, !searching)] {
+            if group.is_empty() && !more {
                 continue;
             }
             if !first {
-                ui.add_space(30.0);
+                ui.add_space(34.0);
             }
             first = false;
-            widgets::label(ui, &format!("{title} · {}", group.len()), 12.0, t.muted);
-            ui.add_space(12.0);
+            let title =
+                if group.is_empty() { "Coming next".to_string() } else { format!("{title} · {}", group.len()) };
+            widgets::section_title(ui, &t, &title);
+            ui.add_space(14.0);
             match self.settings.view {
-                View::Grid => self.grid(ui, &group, actions),
-                View::List => self.list(ui, &group, actions),
+                View::Grid => self.grid(ui, &group, more, actions),
+                View::List => {
+                    if !group.is_empty() {
+                        self.list(ui, &group, actions);
+                    }
+                    if more {
+                        ui.add_space(if group.is_empty() { 0.0 } else { 12.0 });
+                        self.next_row(ui, actions);
+                    }
+                }
             }
         }
     }
 
-    fn grid(&mut self, ui: &mut Ui, group: &[usize], actions: &mut Vec<Action>) {
-        let gap = 0.0;
+    /// Cards in rows; `more` ends the grid with the "your next dojo" card.
+    fn grid(&mut self, ui: &mut Ui, group: &[usize], more: bool, actions: &mut Vec<Action>) {
+        let gap = 16.0;
         let width = ui.available_width();
         let cols = ((width + gap) / (380.0 + gap)).floor().clamp(1.0, 4.0) as usize;
         let card_w = ((width - gap * (cols as f32 - 1.0)) / cols as f32).floor();
-        for row in group.chunks(cols) {
+        let mut items: Vec<Option<usize>> = group.iter().copied().map(Some).collect();
+        if more {
+            items.push(None);
+        }
+        for row in items.chunks(cols) {
             ui.horizontal_top(|ui| {
                 ui.spacing_mut().item_spacing.x = gap;
-                for i in row {
+                for item in row {
                     ui.allocate_ui_with_layout(vec2(card_w, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
-                        self.card(ui, *i, card_w, actions);
+                        match item {
+                            Some(i) => self.card(ui, *i, card_w, actions),
+                            None => self.next_card(ui, card_w, actions),
+                        }
                     });
                 }
             });
-            ui.add_space(-1.0);
+            ui.add_space(gap);
+        }
+    }
+
+    // --- the hero and the next dojo -------------------------------------------------------------
+
+    /// The top of the page: pick up where you left off, or a welcome before the first dojo.
+    fn hero(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        if !self.search.trim().is_empty() {
+            return;
+        }
+        let t = self.t;
+        let pick = self
+            .entries
+            .iter()
+            .position(|e| e.installed.is_some() && e.progress.as_ref().is_some_and(|p| p.done < p.total))
+            .or_else(|| self.entries.iter().position(|e| e.installed.is_some() && e.progress.is_some()));
+        let width = ui.available_width();
+        let bg = ui.painter().add(egui::Shape::Noop);
+        let motif = ui.painter().add(egui::Shape::Noop);
+        let inner = egui::Frame::new().stroke(Stroke::new(1.0, t.border)).inner_margin(Margin::symmetric(34, 30)).show(
+            ui,
+            |ui| {
+                ui.set_width(width - 70.0);
+                ui.set_min_height(168.0);
+                match pick {
+                    Some(i) => self.hero_continue(ui, i, actions),
+                    None => self.hero_welcome(ui),
+                }
+            },
+        );
+        let rect = inner.response.rect;
+        ui.painter().set(bg, egui::Shape::rect_filled(rect, 0.0, t.card));
+        let shape = match pick.map(|i| self.entries[i].app.color) {
+            // Continue: a stripe in the dojo's colour; the ring is the picture.
+            Some([r, g, b]) => egui::Shape::rect_filled(
+                egui::Rect::from_min_size(rect.min, vec2(4.0, rect.height())),
+                0.0,
+                Color32::from_rgb(r, g, b),
+            ),
+            // Welcome: the belt as a watermark on the right.
+            None => widgets::belt_motif(rect, &t),
+        };
+        ui.painter().set(motif, shape);
+        ui.add_space(38.0);
+    }
+
+    fn hero_continue(&mut self, ui: &mut Ui, i: usize, actions: &mut Vec<Action>) {
+        let t = self.t;
+        let ring = 150.0;
+        ui.horizontal(|ui| {
+            let left = (ui.available_width() - ring - 24.0).max(200.0);
+            ui.allocate_ui_with_layout(vec2(left, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                widgets::label(ui, "Continue your practice", 12.0, t.seal);
+                ui.add_space(16.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 12.0;
+                    self.icon(ui, i, 40.0);
+                    ui.label(self.name_job(&self.entries[i], 30.0));
+                });
+                ui.add_space(14.0);
+                let e = &self.entries[i];
+                let Some(p) = e.progress.clone() else { return };
+                let headline = match &p.next {
+                    Some(n) if p.done < p.total => format!("Next: {n}"),
+                    _ if p.done >= p.total && p.total > 0 => "Every lesson done. Keep it sharp.".to_string(),
+                    _ => "Pick a lesson and start practising.".to_string(),
+                };
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(headline).size(21.0).family(egui::FontFamily::Name("display-medium".into())),
+                    )
+                    .truncate(),
+                );
+                ui.add_space(8.0);
+                ui.label(RichText::new(format!("{} of {} {} done", p.done, p.total, p.unit)).size(15.0).color(t.muted));
+                ui.add_space(22.0);
+                ui.horizontal(|ui| {
+                    ui.spacing_mut().item_spacing.x = 8.0;
+                    let id = e.app.id.clone();
+                    let name = e.app.name.clone();
+                    if widgets::button(ui, &t, &format!("Resume in {name}"), Kind::Primary, 0.0, e.busy.is_none())
+                        .clicked()
+                    {
+                        actions.push(Action::Open(id.clone()));
+                    }
+                    if e.state() == State::UpdateAvailable && e.busy.is_none() {
+                        let v = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default();
+                        if widgets::button(ui, &t, &format!("Update to {v} first"), Kind::Secondary, 0.0, true)
+                            .clicked()
+                        {
+                            actions.push(Action::Install(id));
+                        }
+                    }
+                });
+            });
+            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                let e = &self.entries[i];
+                let [r, g, b] = e.app.color;
+                if let Some(p) = &e.progress {
+                    widgets::ring(ui, &t, p.fraction(), ring, Color32::from_rgb(r, g, b), &p.unit);
+                }
+            });
+        });
+    }
+
+    fn hero_welcome(&mut self, ui: &mut Ui) {
+        let t = self.t;
+        ui.horizontal(|ui| {
+            let left = (ui.available_width() * 0.58).max(320.0);
+            ui.allocate_ui_with_layout(vec2(left, 0.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                widgets::label(ui, "Welcome to the dojo", 12.0, t.seal);
+                ui.add_space(16.0);
+                ui.label(RichText::new("Practice that sticks.").size(36.0).family(theme::display()));
+                ui.add_space(12.0);
+                ui.add(
+                    egui::Label::new(
+                        RichText::new(
+                            "Every dojo is a hands-on, open-source app for learning by doing. Install one below: \
+                             Keiko keeps it up to date and shows where you left off.",
+                        )
+                        .size(16.0)
+                        .color(t.muted),
+                    )
+                    .wrap(),
+                );
+            });
+        });
+    }
+
+    /// The last card of the grid: where the next dojo will go.
+    fn next_card(&mut self, ui: &mut Ui, width: f32, actions: &mut Vec<Action>) {
+        let t = self.t;
+        let height = self.card_h.max(300.0);
+        let (rect, _) = ui.allocate_exact_size(vec2(width, height), Sense::hover());
+        ui.painter().extend(widgets::dashed_rect(rect, Stroke::new(1.0, t.border_strong)));
+        let mut child = ui.new_child(
+            egui::UiBuilder::new().max_rect(rect.shrink(30.0)).layout(egui::Layout::top_down(egui::Align::Center)),
+        );
+        let ui = &mut child;
+        ui.spacing_mut().item_spacing.y = 0.0;
+        ui.add_space((height - 60.0 - 250.0).max(0.0) / 2.0);
+        let (plus, _) = ui.allocate_exact_size(vec2(56.0, 56.0), Sense::hover());
+        ui.painter().circle_stroke(plus.center(), 27.0, Stroke::new(1.0, t.border_strong));
+        let c = plus.center();
+        ui.painter().line_segment([c - vec2(9.0, 0.0), c + vec2(9.0, 0.0)], Stroke::new(1.6, t.seal));
+        ui.painter().line_segment([c - vec2(0.0, 9.0), c + vec2(0.0, 9.0)], Stroke::new(1.6, t.seal));
+        ui.add_space(20.0);
+        ui.label(RichText::new("Your next dojo").size(24.0).family(theme::display()));
+        ui.add_space(10.0);
+        ui.add(
+            egui::Label::new(
+                RichText::new("More dojos are on the way. Any app with GitHub releases can become one.")
+                    .size(14.5)
+                    .color(t.muted),
+            )
+            .halign(egui::Align::Center)
+            .wrap(),
+        );
+        ui.add_space(22.0);
+        if widgets::button(ui, &t, "How to add a dojo", Kind::Secondary, 0.0, true).clicked() {
+            actions.push(Action::Url("keiko".into(), GUIDE.into()));
+        }
+    }
+
+    /// The list view's version of the next-dojo card.
+    fn next_row(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
+        let t = self.t;
+        let width = ui.available_width();
+        let (rect, resp) = ui.allocate_exact_size(vec2(width, 64.0), Sense::click());
+        ui.painter().extend(widgets::dashed_rect(rect, Stroke::new(1.0, t.border_strong)));
+        let c = egui::pos2(rect.left() + 44.0, rect.center().y);
+        ui.painter().line_segment([c - vec2(8.0, 0.0), c + vec2(8.0, 0.0)], Stroke::new(1.6, t.seal));
+        ui.painter().line_segment([c - vec2(0.0, 8.0), c + vec2(0.0, 8.0)], Stroke::new(1.6, t.seal));
+        let text = widgets::spaced(
+            "Your next dojo · how to add one",
+            12.0,
+            if resp.hovered() { t.text } else { t.muted },
+            false,
+        );
+        let g = ui.painter().layout_job(text);
+        ui.painter().galley(egui::pos2(rect.left() + 80.0, rect.center().y - g.size().y / 2.0), g, t.muted);
+        if resp.hovered() {
+            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+        }
+        if resp.clicked() {
+            actions.push(Action::Url("keiko".into(), GUIDE.into()));
         }
     }
 
@@ -686,8 +909,9 @@ impl KeikoApp {
         let app_color = Color32::from_rgb(r, g, b);
         let inner = egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, t.border)).show(ui, |ui| {
             ui.set_width(width - 2.0);
-            ui.set_min_height(430.0);
+            ui.set_min_height(self.card_h);
             ui.spacing_mut().item_spacing.y = 0.0;
+            let top = ui.cursor().top();
             // Header strip: version and the GitHub link.
             egui::Frame::new().inner_margin(Margin::symmetric(22, 0)).show(ui, |ui| {
                 ui.set_height(50.0);
@@ -705,10 +929,12 @@ impl KeikoApp {
             });
             let line = ui.allocate_exact_size(vec2(width - 2.0, 1.0), Sense::hover()).0;
             ui.painter().rect_filled(line, 0.0, t.border);
-            egui::Frame::new().inner_margin(Margin { left: 22, right: 22, top: 22, bottom: 22 }).show(ui, |ui| {
-                ui.spacing_mut().item_spacing.y = 0.0;
-                self.card_body(ui, i, actions);
-            });
+            let body =
+                egui::Frame::new().inner_margin(Margin { left: 22, right: 22, top: 22, bottom: 22 }).show(ui, |ui| {
+                    ui.spacing_mut().item_spacing.y = 0.0;
+                    self.card_body(ui, i, actions);
+                });
+            self.next_card_h = self.next_card_h.max(body.response.rect.bottom() - top);
         });
         let rect = inner.response.rect;
         let hovered = ui.rect_contains_pointer(rect);
@@ -742,12 +968,9 @@ impl KeikoApp {
 
     fn by_keiko(&self, ui: &mut Ui) {
         let t = self.t;
-        egui::Frame::new()
-            .stroke(Stroke::new(1.0, t.seal.gamma_multiply(0.7)))
-            .inner_margin(Margin::symmetric(7, 3))
-            .show(ui, |ui| {
-                ui.label(widgets::spaced("by Keiko", 10.0, t.seal, false));
-            });
+        egui::Frame::new().fill(t.seal.gamma_multiply(0.16)).inner_margin(Margin::symmetric(8, 4)).show(ui, |ui| {
+            ui.label(widgets::spaced("by Keiko", 10.0, t.seal, false));
+        });
     }
 
     fn card_body(&mut self, ui: &mut Ui, i: usize, actions: &mut Vec<Action>) {

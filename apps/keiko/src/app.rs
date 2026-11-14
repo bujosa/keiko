@@ -5,7 +5,7 @@ use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
 use egui::text::{LayoutJob, TextFormat};
-use egui::{Color32, FontId, Margin, RichText, Sense, Stroke, Ui, pos2, vec2};
+use egui::{Color32, FontId, Margin, RichText, Sense, Stroke, Ui, vec2};
 use keiko_core::{App, Catalog, Latest, State, format};
 use keiko_native::install::Phase;
 use keiko_native::store::{Feed, Settings, Sort, Theme, View};
@@ -17,7 +17,7 @@ use crate::widgets::{self, Icon, Kind};
 
 /// Re-check GitHub when the last check is older than this.
 const STALE: u64 = 3600;
-const MORE_W: f32 = 40.0;
+const MORE_W: f32 = widgets::CONTROL_H;
 /// The artwork inside an icon drawn on Apple's grid (824 of 1024 px, centred).
 const GRID: egui::Rect = egui::Rect { min: egui::pos2(0.0977, 0.0977), max: egui::pos2(0.9023, 0.9023) };
 
@@ -70,6 +70,33 @@ impl Entry {
     }
 }
 
+/// The tabs above the catalog.
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum Filter {
+    All,
+    Installed,
+    Updates,
+    Available,
+}
+
+impl Filter {
+    const ALL: [(Filter, &'static str); 4] = [
+        (Filter::All, "All"),
+        (Filter::Installed, "Installed"),
+        (Filter::Updates, "Updates"),
+        (Filter::Available, "Available"),
+    ];
+
+    fn keeps(self, e: &Entry) -> bool {
+        match self {
+            Filter::All => true,
+            Filter::Installed => e.installed.is_some(),
+            Filter::Updates => e.state() == State::UpdateAvailable,
+            Filter::Available => e.installed.is_none(),
+        }
+    }
+}
+
 enum Action {
     Install(String),
     Open(String),
@@ -88,6 +115,7 @@ pub struct KeikoApp {
     t: Tokens,
     applied_dark: Option<bool>,
     search: String,
+    filter: Filter,
     textures: HashMap<String, egui::TextureHandle>,
     toasts: Vec<(String, bool, Instant)>,
     confirm_uninstall: Option<String>,
@@ -143,7 +171,14 @@ impl KeikoApp {
             Ok(p) => (p, None),
             Err(e) => (Paths::for_tests(&std::env::temp_dir().join("keiko")), Some(e)),
         };
-        let (catalog, catalog_error) = match Catalog::bundled() {
+        // `KEIKO_CATALOG=<file>`: try a catalog from disk (adding a dojo, screenshots).
+        let catalog = match std::env::var_os("KEIKO_CATALOG") {
+            Some(path) => {
+                std::fs::read_to_string(&path).map_err(|e| format!("catalog: {e}")).and_then(|t| Catalog::parse(&t))
+            }
+            None => Catalog::bundled(),
+        };
+        let (catalog, catalog_error) = match catalog {
             Ok(c) => (c, None),
             Err(e) => (Catalog { apps: vec![], launcher: None }, Some(e)),
         };
@@ -189,6 +224,7 @@ impl KeikoApp {
             t: Tokens::DARK,
             applied_dark: None,
             search: String::new(),
+            filter: Filter::All,
             textures,
             toasts: vec![],
             confirm_uninstall: None,
@@ -537,6 +573,13 @@ impl KeikoApp {
             } else if r.clicked() {
                 self.refresh();
             }
+            ui.add_space(14.0);
+            for (f, name) in Filter::ALL {
+                let count = self.entries.iter().filter(|e| !e.launcher && f.keeps(e)).count();
+                if widgets::tab(ui, &t, name, count, self.filter == f).clicked() {
+                    self.filter = f;
+                }
+            }
             ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
                 if widgets::icon_button(ui, &t, Icon::List, self.settings.view == View::List, "List").clicked() {
                     self.settings.view = View::List;
@@ -550,8 +593,8 @@ impl KeikoApp {
                 ui.add(
                     egui::TextEdit::singleline(&mut self.search)
                         .hint_text("Search dojos")
-                        .desired_width(240.0)
-                        .margin(vec2(12.0, 11.0))
+                        .desired_width(220.0)
+                        .margin(vec2(12.0, 9.0))
                         .font(FontId::new(15.0, egui::FontFamily::Proportional)),
                 );
                 ui.add_space(6.0);
@@ -563,7 +606,7 @@ impl KeikoApp {
                 };
                 egui::ComboBox::from_id_salt("sort")
                     .selected_text(RichText::new(text(self.settings.sort)).size(15.0))
-                    .width(200.0)
+                    .width(180.0)
                     .height(240.0)
                     .show_ui(ui, |ui| {
                         for s in [Sort::Name, Sort::Updated, Sort::Status] {
@@ -643,7 +686,10 @@ impl KeikoApp {
 
     fn ordered(&self) -> Vec<usize> {
         let mut idx: Vec<usize> = (0..self.entries.len())
-            .filter(|i| !self.entries[*i].launcher && self.entries[*i].matches(&self.search))
+            .filter(|i| {
+                let e = &self.entries[*i];
+                !e.launcher && e.matches(&self.search) && self.filter.keeps(e)
+            })
             .collect();
         let e = &self.entries;
         match self.settings.sort {
@@ -663,23 +709,38 @@ impl KeikoApp {
         if order.is_empty() {
             ui.add_space(40.0);
             ui.vertical_centered(|ui| {
-                ui.label(RichText::new(format!("No dojo matches “{}”", self.search.trim())).size(16.0).color(t.muted));
+                let text = if self.search.trim().is_empty() {
+                    match self.filter {
+                        Filter::Updates => "Everything is up to date.".to_string(),
+                        Filter::Installed => "No dojo installed yet.".to_string(),
+                        _ => "Nothing here yet.".to_string(),
+                    }
+                } else {
+                    format!("No dojo matches “{}”", self.search.trim())
+                };
+                ui.label(RichText::new(text).size(16.0).color(t.muted));
             });
             return;
         }
-        let (installed, other): (Vec<usize>, Vec<usize>) =
-            order.into_iter().partition(|i| self.entries[*i].installed.is_some());
+        let groups: Vec<(&str, Vec<usize>)> = if self.filter == Filter::All {
+            let (installed, other): (Vec<usize>, Vec<usize>) =
+                order.into_iter().partition(|i| self.entries[*i].installed.is_some());
+            vec![("Installed", installed), ("Available", other)]
+        } else {
+            let title = Filter::ALL.iter().find(|(f, _)| *f == self.filter).map(|(_, n)| *n).unwrap_or("");
+            vec![(title, order)]
+        };
         let mut first = true;
-        for (title, group) in [("Installed", installed), ("Available", other)] {
+        for (title, group) in groups {
             if group.is_empty() {
                 continue;
             }
             if !first {
-                ui.add_space(34.0);
+                ui.add_space(26.0);
             }
             first = false;
             widgets::section_title(ui, &t, &format!("{title} · {}", group.len()));
-            ui.add_space(14.0);
+            ui.add_space(12.0);
             match self.settings.view {
                 View::Grid => self.grid(ui, &group, actions),
                 View::List => self.list(ui, &group, actions),
@@ -688,9 +749,9 @@ impl KeikoApp {
     }
 
     fn grid(&mut self, ui: &mut Ui, group: &[usize], actions: &mut Vec<Action>) {
-        let gap = 16.0;
+        let gap = 14.0;
         let width = ui.available_width();
-        let cols = ((width + gap) / (380.0 + gap)).floor().clamp(1.0, 4.0) as usize;
+        let cols = ((width + gap) / (250.0 + gap)).floor().clamp(1.0, 6.0) as usize;
         let card_w = ((width - gap * (cols as f32 - 1.0)) / cols as f32).floor();
         for row in group.chunks(cols) {
             ui.horizontal_top(|ui| {
@@ -799,7 +860,7 @@ impl KeikoApp {
         let latest = e.latest.as_ref().map(|l| l.version.clone());
         match (&e.installed, e.state()) {
             (Some(i), State::UpdateAvailable) => {
-                let mut job = widgets::spaced(&format!("{}  »  ", i.version), 12.0, t.muted, false);
+                let mut job = widgets::spaced(&format!("{} » ", i.version), 12.0, t.muted, false);
                 widgets::append(&mut job, &latest.unwrap_or_default(), 12.0, t.good, true);
                 job
             }
@@ -824,28 +885,24 @@ impl KeikoApp {
             ui.set_min_height(self.card_h);
             ui.spacing_mut().item_spacing.y = 0.0;
             let top = ui.cursor().top();
-            // Header strip: version and the GitHub link.
-            egui::Frame::new().inner_margin(Margin::symmetric(22, 0)).show(ui, |ui| {
-                ui.set_height(50.0);
+            // Header strip: the version on the left, the belt on the right.
+            egui::Frame::new().inner_margin(Margin::symmetric(16, 0)).show(ui, |ui| {
+                ui.set_height(40.0);
                 ui.horizontal_centered(|ui| {
                     let job = self.version_job(&self.entries[i]);
                     ui.label(job);
                     ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                        let r = self.github_link(ui);
-                        if r.clicked() {
-                            let e = &self.entries[i];
-                            actions.push(Action::Url(e.app.id.clone(), e.app.github_url()));
-                        }
+                        let e = &self.entries[i];
+                        widgets::belt(ui, &t, e.state(), e.busy_label().as_deref());
                     });
                 });
             });
             let line = ui.allocate_exact_size(vec2(width - 2.0, 1.0), Sense::hover()).0;
             ui.painter().rect_filled(line, 0.0, t.border);
-            let body =
-                egui::Frame::new().inner_margin(Margin { left: 22, right: 22, top: 22, bottom: 22 }).show(ui, |ui| {
-                    ui.spacing_mut().item_spacing.y = 0.0;
-                    self.card_body(ui, i, actions);
-                });
+            let body = egui::Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
+                ui.spacing_mut().item_spacing.y = 0.0;
+                self.card_body(ui, i, actions);
+            });
             self.next_card_h = self.next_card_h.max(body.response.rect.bottom() - top);
         });
         let rect = inner.response.rect;
@@ -858,34 +915,6 @@ impl KeikoApp {
             let top = egui::Rect::from_min_size(rect.min, vec2(rect.width(), 2.0));
             ui.painter().rect_filled(top, 0.0, app_color);
         }
-    }
-
-    fn github_link(&self, ui: &mut Ui) -> egui::Response {
-        let t = self.t;
-        let galley = ui.painter().layout_job(widgets::spaced("GitHub", 11.5, t.muted, false));
-        let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 18.0, 24.0), Sense::click());
-        let color = if resp.hovered() { t.text } else { t.muted };
-        ui.painter().galley_with_override_text_color(
-            pos2(rect.left(), rect.center().y - galley.size().y / 2.0),
-            galley,
-            color,
-        );
-        let ir = egui::Rect::from_center_size(pos2(rect.right() - 5.0, rect.center().y), vec2(7.0, 7.0));
-        widgets::paint_icon(ui, Icon::External, ir, color);
-        if resp.hovered() {
-            ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
-        }
-        resp.on_hover_text("Open the repository on GitHub")
-    }
-
-    fn by_keiko(&self, ui: &mut Ui) {
-        let t = self.t;
-        egui::Frame::new().stroke(Stroke::new(1.0, t.border_strong)).inner_margin(Margin::symmetric(7, 3)).show(
-            ui,
-            |ui| {
-                ui.label(widgets::spaced("by Keiko", 10.0, t.muted, false));
-            },
-        );
     }
 
     /// Keiko's icon without the macOS margin and shadow, for the top bar and the banner.
@@ -905,43 +934,42 @@ impl KeikoApp {
         let t = self.t;
         let content_w = ui.available_width();
         ui.horizontal(|ui| {
-            ui.spacing_mut().item_spacing.x = 16.0;
-            self.icon(ui, i, 72.0);
+            ui.spacing_mut().item_spacing.x = 12.0;
+            self.icon(ui, i, 44.0);
             ui.vertical(|ui| {
-                ui.spacing_mut().item_spacing.y = 6.0;
-                ui.add_space(4.0);
-                ui.horizontal(|ui| {
-                    ui.spacing_mut().item_spacing.x = 10.0;
-                    ui.label(self.name_job(&self.entries[i], 29.0));
-                    self.by_keiko(ui);
-                });
+                ui.spacing_mut().item_spacing.y = 3.0;
+                ui.add_space(2.0);
+                ui.add(egui::Label::new(self.name_job(&self.entries[i], 20.0)).truncate());
                 ui.add(
-                    egui::Label::new(RichText::new(&self.entries[i].app.tagline).size(15.5).color(t.muted)).truncate(),
+                    egui::Label::new(RichText::new(&self.entries[i].app.tagline).size(13.5).color(t.muted)).truncate(),
                 );
             });
         });
-        ui.add_space(22.0);
+        ui.add_space(12.0);
         let e = &self.entries[i];
-        widgets::belt(ui, &t, e.state(), e.busy_label().as_deref());
-        ui.add_space(18.0);
-
-        ui.spacing_mut().item_spacing.y = 0.0;
-        ui.add(
-            egui::Label::new(RichText::new(&e.app.description).size(14.5).color(t.text.gamma_multiply(0.88))).wrap(),
+        // At most two lines of description, so every card keeps the same rhythm.
+        let mut job = LayoutJob::simple(
+            e.app.description.clone(),
+            FontId::new(13.5, egui::FontFamily::Proportional),
+            t.text.gamma_multiply(0.85),
+            content_w,
         );
+        job.wrap.max_rows = 2;
+        job.wrap.overflow_character = Some('…');
+        ui.label(job);
         // One line of facts, like a spec sheet: size and release date.
         let size = e.latest.as_ref().and_then(|l| l.asset.as_ref()).map(|a| format::size(a.size));
         let released = e.latest.as_ref().and_then(|l| l.published_at.as_deref()).and_then(format::date);
-        let facts: Vec<String> = [size, released.map(|d| format!("Released {d}"))].into_iter().flatten().collect();
+        let facts: Vec<String> = [size, released].into_iter().flatten().collect();
         if !facts.is_empty() {
-            ui.add_space(12.0);
-            ui.label(RichText::new(facts.join("  ·  ")).family(theme::mono()).size(12.5).color(t.muted));
+            ui.add_space(8.0);
+            ui.label(RichText::new(facts.join("  ·  ")).family(theme::mono()).size(11.5).color(t.muted));
         }
         if let Some(err) = &e.error {
-            ui.add_space(8.0);
-            ui.add(egui::Label::new(RichText::new(err).size(13.0).color(t.bad)).wrap());
+            ui.add_space(6.0);
+            ui.add(egui::Label::new(RichText::new(err).size(12.5).color(t.bad)).truncate()).on_hover_text(err.as_str());
         }
-        ui.add_space(18.0);
+        ui.add_space(14.0);
         self.card_actions(ui, i, content_w, actions);
     }
 
@@ -956,7 +984,7 @@ impl KeikoApp {
                 Some(Busy::Phase(Phase::Installing)) => 1.0,
                 _ => 0.0,
             };
-            let (rect, _) = ui.allocate_exact_size(vec2(width, 40.0), Sense::hover());
+            let (rect, _) = ui.allocate_exact_size(vec2(width, widgets::CONTROL_H), Sense::hover());
             let p = ui.painter();
             p.rect_stroke(rect, 2.0, Stroke::new(1.0, t.border_strong), egui::StrokeKind::Inside);
             let mut fill = rect.shrink(1.0);
@@ -973,12 +1001,10 @@ impl KeikoApp {
             match e.state() {
                 State::UpdateAvailable => {
                     let half = ((rest - gap) / 2.0).floor();
-                    let installed = e.installed.as_ref().map(|i| i.version.clone()).unwrap_or_default();
-                    let latest = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_default();
-                    if widgets::button(ui, &t, &format!("Open {installed}"), Kind::Secondary, half, true).clicked() {
+                    if widgets::button(ui, &t, "Open", Kind::Secondary, half, true).clicked() {
                         actions.push(Action::Open(id.clone()));
                     }
-                    if widgets::button(ui, &t, &format!("Update to {latest}"), Kind::Primary, half, true).clicked() {
+                    if widgets::button(ui, &t, "Update", Kind::Primary, half, true).clicked() {
                         actions.push(Action::Install(id.clone()));
                     }
                 }
@@ -993,7 +1019,7 @@ impl KeikoApp {
                     }
                 }
                 State::Unavailable => {
-                    let label = if e.checking { "Checking…" } else { "Not available yet" };
+                    let label = if e.checking { "Checking…" } else { "Not available" };
                     widgets::button(ui, &t, label, Kind::Secondary, rest, false);
                 }
             }
@@ -1066,32 +1092,32 @@ impl KeikoApp {
             for i in group {
                 let line = ui.allocate_exact_size(vec2(width - 2.0, 1.0), Sense::hover()).0;
                 ui.painter().rect_filled(line, 0.0, t.border);
-                egui::Frame::new().inner_margin(Margin::symmetric(16, 12)).show(ui, |ui| {
+                egui::Frame::new().inner_margin(Margin::symmetric(16, 7)).show(ui, |ui| {
                     ui.horizontal(|ui| {
                         ui.allocate_ui_with_layout(
-                            vec2(cols[0], 44.0),
+                            vec2(cols[0], 34.0),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 ui.set_width(cols[0]);
-                                self.icon(ui, *i, 44.0);
+                                self.icon(ui, *i, 34.0);
                             },
                         );
                         let e = &self.entries[*i];
                         ui.allocate_ui_with_layout(
-                            vec2(name_w, 44.0),
+                            vec2(name_w, 34.0),
                             egui::Layout::top_down(egui::Align::Min),
                             |ui| {
                                 ui.set_width(name_w);
-                                ui.spacing_mut().item_spacing.y = 2.0;
-                                ui.label(self.name_job(e, 19.0));
+                                ui.spacing_mut().item_spacing.y = 0.0;
+                                ui.label(self.name_job(e, 17.0));
                                 ui.add(
-                                    egui::Label::new(RichText::new(&e.app.tagline).size(13.5).color(t.muted))
+                                    egui::Label::new(RichText::new(&e.app.tagline).size(12.5).color(t.muted))
                                         .truncate(),
                                 );
                             },
                         );
                         ui.allocate_ui_with_layout(
-                            vec2(cols[2], 44.0),
+                            vec2(cols[2], 34.0),
                             egui::Layout::left_to_right(egui::Align::Center),
                             |ui| {
                                 ui.set_width(cols[2]);
@@ -1114,7 +1140,7 @@ impl KeikoApp {
                             (released, cols[5], t.muted),
                         ] {
                             ui.allocate_ui_with_layout(
-                                vec2(w, 44.0),
+                                vec2(w, 34.0),
                                 egui::Layout::left_to_right(egui::Align::Center),
                                 |ui| {
                                     ui.set_width(w);

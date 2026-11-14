@@ -47,5 +47,6 @@ the window (`KEIKO_SCREENSHOT=<png>`). Conventional Commits.
 
 ## Running
 - App: `cargo run -p keiko --release`.
+- `KEIKO_CATALOG=<file>` loads a catalog from disk (try a new dojo; screenshots of a full catalog).
 - `KEIKO_HOME=<dir>` isolates settings and cache; `KEIKO_APPS_DIR=<dir>` installs and detects there
   only (use both in tests and screenshots, never touch the user's ~/Applications from tests).

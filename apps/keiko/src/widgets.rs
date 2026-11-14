@@ -6,6 +6,9 @@ use keiko_core::State;
 
 use crate::theme::{self, Tokens};
 
+/// Height of buttons and square icon buttons.
+pub const CONTROL_H: f32 = 36.0;
+
 /// Uppercase mono text with tracking, like a printed label.
 pub fn spaced(text: &str, size: f32, color: Color32, bold: bool) -> LayoutJob {
     let mut job = LayoutJob::default();
@@ -44,10 +47,10 @@ pub fn button(ui: &mut Ui, t: &Tokens, text: &str, kind: Kind, width: f32, enabl
         Kind::Primary => (t.primary_text, t.primary_bg, t.primary_bg),
         Kind::Secondary => (t.text, Color32::TRANSPARENT, t.border_strong),
     };
-    let galley = ui.painter().layout_job(spaced(text, 12.0, fg, true));
+    let galley = ui.painter().layout_job(spaced(text, 11.5, fg, true));
     let w = if width > 0.0 { width } else { galley.size().x + 36.0 };
     let sense = if enabled { Sense::click() } else { Sense::hover() };
-    let (rect, resp) = ui.allocate_exact_size(vec2(w, 40.0), sense);
+    let (rect, resp) = ui.allocate_exact_size(vec2(w, CONTROL_H), sense);
     let hovered = enabled && resp.hovered();
     let bg = match (kind, hovered) {
         (Kind::Primary, true) => bg.gamma_multiply(0.86),
@@ -85,13 +88,12 @@ pub enum Icon {
     Grid,
     List,
     More,
-    External,
     Theme,
 }
 
 /// A square icon button (`active` draws it pressed, like the view toggle).
 pub fn icon_button(ui: &mut Ui, t: &Tokens, icon: Icon, active: bool, hint: &str) -> Response {
-    let (rect, resp) = ui.allocate_exact_size(vec2(40.0, 40.0), Sense::click());
+    let (rect, resp) = ui.allocate_exact_size(Vec2::splat(CONTROL_H), Sense::click());
     let (bg, fg) = if active {
         (t.primary_bg, t.primary_text)
     } else if resp.hovered() {
@@ -106,7 +108,7 @@ pub fn icon_button(ui: &mut Ui, t: &Tokens, icon: Icon, active: bool, hint: &str
         Stroke::new(1.0, if active { bg } else { t.border_strong }),
         StrokeKind::Inside,
     );
-    paint_icon(ui, icon, rect.shrink(12.0), fg);
+    paint_icon(ui, icon, rect.shrink(11.0), fg);
     focus_ring(ui, &resp, rect);
     if resp.hovered() {
         ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
@@ -151,12 +153,6 @@ pub fn paint_icon(ui: &Ui, icon: Icon, r: Rect, c: Color32) {
                 p.circle_filled(r.center() + vec2(i as f32 * 5.0, 0.0), 1.6, c);
             }
         }
-        Icon::External => {
-            let (a, b) = (pos2(r.left(), r.bottom()), pos2(r.right(), r.top()));
-            p.line_segment([a, b], s);
-            p.line_segment([b, b + vec2(-r.width() * 0.6, 0.0)], s);
-            p.line_segment([b, b + vec2(0.0, r.height() * 0.6)], s);
-        }
         Icon::Theme => {
             let rad = r.width() * 0.48;
             p.circle_stroke(r.center(), rad, s);
@@ -175,9 +171,7 @@ pub fn paint_icon(ui: &Ui, icon: Icon, r: Rect, c: Color32) {
 pub fn belt(ui: &mut Ui, t: &Tokens, state: State, busy: Option<&str>) -> Response {
     let (swatch, text, color, hint) = match (busy, state) {
         (Some(b), _) => (t.seal, b.to_string(), t.seal, "Working on it"),
-        (None, State::UpdateAvailable) => {
-            (t.amber, "Update available".into(), t.amber, "Yellow belt: a newer version is out")
-        }
+        (None, State::UpdateAvailable) => (t.amber, "Update".into(), t.amber, "Yellow belt: a newer version is out"),
         (None, State::UpToDate) => (
             if t.dark { Color32::from_rgb(6, 6, 8) } else { Color32::from_rgb(22, 23, 27) },
             "Up to date".into(),
@@ -191,18 +185,18 @@ pub fn belt(ui: &mut Ui, t: &Tokens, state: State, busy: Option<&str>) -> Respon
             (Color32::from_rgb(246, 243, 236), "Not installed".into(), t.muted, "White belt: ready to install")
         }
         (None, State::Unavailable) => {
-            (t.faint, "No build for this Mac".into(), t.faint, "The latest release has no build for this Mac")
+            (t.faint, "No Mac build".into(), t.faint, "The latest release has no build for this Mac")
         }
     };
-    let galley = ui.painter().layout_job(spaced(&text, 11.0, color, false));
-    let size = vec2(galley.size().x + 48.0, 28.0);
+    let galley = ui.painter().layout_job(spaced(&text, 10.0, color, false));
+    let size = vec2(galley.size().x + 36.0, 22.0);
     let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     let p = ui.painter();
     p.rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, color.gamma_multiply(0.55)), StrokeKind::Inside);
     // The belt: a short solid band in the belt's colour.
-    let sw = Rect::from_min_size(pos2(rect.left() + 10.0, rect.center().y - 3.5), vec2(20.0, 7.0));
+    let sw = Rect::from_min_size(pos2(rect.left() + 8.0, rect.center().y - 3.0), vec2(14.0, 6.0));
     p.rect(sw, CornerRadius::same(2), swatch, Stroke::new(1.0, t.border_strong), StrokeKind::Inside);
-    p.galley(pos2(sw.right() + 8.0, rect.center().y - galley.size().y / 2.0), galley, color);
+    p.galley(pos2(sw.right() + 7.0, rect.center().y - galley.size().y / 2.0), galley, color);
     resp.on_hover_text(hint)
 }
 
@@ -228,4 +222,27 @@ pub fn section_title(ui: &mut Ui, t: &Tokens, text: &str) {
         let y = ui.min_rect().center().y;
         ui.painter().line_segment([pos2(r.left() + 10.0, y), pos2(r.right(), y)], Stroke::new(1.0, t.border));
     });
+}
+
+/// A filter tab: the name, its count, and an underline in vermilion when selected.
+pub fn tab(ui: &mut Ui, t: &Tokens, name: &str, count: usize, active: bool) -> Response {
+    let mut job = spaced(name, 11.5, if active { t.text } else { t.muted }, active);
+    append(&mut job, &format!("  {count}"), 11.5, t.faint, false);
+    let galley = ui.painter().layout_job(job);
+    let (rect, resp) = ui.allocate_exact_size(vec2(galley.size().x + 24.0, CONTROL_H), Sense::click());
+    let p = ui.painter();
+    if resp.hovered() && !active {
+        p.rect_filled(rect, 2.0, t.card_hover);
+    }
+    p.galley(pos2(rect.left() + 12.0, rect.center().y - galley.size().y / 2.0), galley, t.text);
+    if active {
+        let line =
+            Rect::from_min_max(pos2(rect.left() + 12.0, rect.bottom() - 2.0), pos2(rect.right() - 12.0, rect.bottom()));
+        p.rect_filled(line, 0.0, t.seal);
+    }
+    focus_ring(ui, &resp, rect);
+    if resp.hovered() {
+        ui.ctx().set_cursor_icon(egui::CursorIcon::PointingHand);
+    }
+    resp
 }

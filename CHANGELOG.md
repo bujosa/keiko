@@ -1,5 +1,15 @@
 # Changelog
 
+## 0.3.2
+
+A catalog that scales.
+
+- **Tabs**: All, Installed, Updates and Available, each with its count.
+- **Compact cards**: the version and the belt share the card's header; a smaller icon, two lines of
+  description at most, lower buttons. Up to six columns (five at 1400 px).
+- **Compact list**: shorter rows, so a screen holds a dozen dojos.
+- `KEIKO_CATALOG=<file>` loads a catalog from disk, to try a new dojo before it ships.
+
 ## 0.3.1
 
 A professional identity.

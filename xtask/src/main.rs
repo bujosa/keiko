@@ -46,8 +46,7 @@ fn ci() -> Result<(), String> {
 fn icon() -> Result<(), String> {
     for (name, sizes) in [("keiko", &[128u32, 256, 512, 1024][..]), ("keiko-small", &[16u32, 32, 64, 128][..])] {
         let svg = std::fs::read(format!("assets/app-icon/{name}.svg")).map_err(|e| e.to_string())?;
-        let tree =
-            resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).map_err(|e| e.to_string())?;
+        let tree = resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).map_err(|e| e.to_string())?;
         for &size in sizes {
             let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).ok_or("bad size")?;
             let scale = size as f32 / tree.size().width();

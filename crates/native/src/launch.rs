@@ -1,10 +1,8 @@
-//! Open apps, folders and web pages; read a dojo's progress.
+//! Open apps, folders and web pages.
 
 use std::path::Path;
 use std::process::Command;
 use std::time::Duration;
-
-use keiko_core::{ProgressSpec, Snapshot, progress};
 
 use crate::run::run;
 
@@ -31,15 +29,15 @@ pub fn open_url(url: &str) -> Result<(), String> {
     open_args(&[url.as_ref()])
 }
 
-/// Run the dojo's progress command from inside its bundle and read the result.
-pub fn progress(app_path: &Path, spec: &ProgressSpec) -> Option<Snapshot> {
-    let bin = app_path.join("Contents/MacOS").join(&spec.bin);
-    if !bin.is_file() {
-        return None;
-    }
-    let o = run(Command::new(bin).args(&spec.args), None, Duration::from_secs(10), 1 << 20).ok()?;
-    if !o.ok() {
-        return None;
-    }
-    progress::extract(&String::from_utf8_lossy(&o.stdout), spec)
+/// Open `app` again once this process has quit (after Keiko replaced its own bundle).
+pub fn relaunch(app: &Path) -> Result<(), String> {
+    Command::new("/bin/sh")
+        .args(["-c", "sleep 1; /usr/bin/open \"$0\""])
+        .arg(app)
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("relaunch: {e}"))
 }

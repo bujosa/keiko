@@ -45,6 +45,8 @@ pub struct Settings {
 pub struct Feed {
     pub checked_at: u64,
     pub latest: BTreeMap<String, Latest>,
+    /// The version each app was last announced at, so every update is notified once.
+    pub notified: BTreeMap<String, String>,
 }
 
 fn load<T: DeserializeOwned + Default>(path: &Path) -> T {

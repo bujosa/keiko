@@ -2,15 +2,16 @@
 
 Keiko is the launcher for the dojo apps: an ultralight, pure-Rust (egui) macOS app that lists every
 dojo in `catalog.toml`, installs the right build from its GitHub release after verifying it, tells
-when an update is out, opens installed dojos and shows each dojo's progress. Everything is in
-English. PodDojo (`bujosa/poddojo`) is the first dojo.
+when an update is out (hourly checks, one notification per version), opens installed dojos and
+updates itself. Everything is in English. PodDojo (`bujosa/poddojo`) is the first dojo.
 
 ## Layout
 - `catalog.toml` — the dojos (embedded at build time). Adding one: `docs/adding-a-dojo.md`.
-- `crates/core` — catalog + validation, GitHub release model, belts (`State`), progress, formatting.
+- `crates/core` — catalog + validation, GitHub release model, belts (`State`), formatting.
   Pure: no processes, no network, no file system.
 - `crates/native` — `github` (curl), `install` (verify, place, uninstall), `detect` (plutil),
-  `launch` (open, progress command), `store` (settings and release cache), `run` (timeouts).
+  `launch` (open, relaunch), `notify` (macOS notifications), `store` (settings, release cache,
+  notified versions), `run` (timeouts).
 - `apps/keiko` — the egui window (thin: every side effect goes through `jobs` on a thread).
 - `xtask` — `cargo xtask ci | icon | bundle [--install] | release`.
 

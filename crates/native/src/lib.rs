@@ -6,6 +6,7 @@ pub mod detect;
 pub mod github;
 pub mod install;
 pub mod launch;
+pub mod notify;
 pub mod paths;
 pub mod run;
 pub mod store;

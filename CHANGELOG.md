@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.3.0
+
+Keiko does one job well: install the dojos, keep them up to date, open them.
+
+- **Notifications**: Keiko checks for new releases every hour while it is open and sends a macOS
+  notification once for each new version.
+- **Keiko updates itself**: a banner offers the new version with *Update and restart*, verified like
+  any dojo (SHA-256, bundle identifier, code signature).
+- A cleaner catalog: the practice hero, the progress on the cards and the next-dojo placeholder are
+  gone.
+
 ## 0.2.0
 
 A more beautiful Keiko.

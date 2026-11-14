@@ -15,22 +15,6 @@ icon to `assets/apps/<id>.png`, wired in `apps/keiko/src/app.rs › app_png`).
    `CFBundleShortVersionString`. Keiko only replaces an installed app with the same identifier.
 5. **A valid code signature** (ad-hoc is accepted; `codesign --verify --deep --strict` must pass).
 
-## Optional: progress on the card
-
-If the bundle ships a CLI that prints JSON, Keiko can show progress:
-
-```toml
-[apps.progress]
-bin = "dojo"                 # inside <App>.app/Contents/MacOS
-args = ["status", "--json"]
-done = "/lessons_done"       # JSON pointers (RFC 6901)
-total = "/lessons_total"
-next = "/resume/title"       # optional
-unit = "lessons"
-```
-
-The command must answer within 10 seconds and must not change anything.
-
 ## Naming
 
 Dojos are named `<Topic>Dojo` (PodDojo, RustDojo…): Keiko draws the topic in the text colour and

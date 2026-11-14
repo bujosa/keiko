@@ -3,14 +3,13 @@
 use std::path::PathBuf;
 use std::sync::mpsc::{Receiver, Sender, channel};
 
-use keiko_core::{App, Latest, Snapshot};
+use keiko_core::{App, Latest};
 use keiko_native::install::Phase;
-use keiko_native::{Installed, Paths, detect, github, install, launch};
+use keiko_native::{Installed, Paths, detect, github, install};
 
 pub enum Msg {
     Detected(String, Option<Installed>),
     Latest(String, Result<Option<Latest>, String>),
-    Progress(String, Option<Snapshot>),
     Phase(String, Phase),
     Installed(String, Result<Installed, String>),
     Uninstalled(String, Result<PathBuf, String>),
@@ -45,29 +44,25 @@ impl Jobs {
         });
     }
 
-    /// Find the installed copy, read its progress, then ask GitHub for the latest release.
+    /// Find the installed copy, then ask GitHub for the latest release.
     pub fn check(&self, paths: &Paths, app: &App) {
         let (paths, app) = (paths.clone(), app.clone());
         self.spawn(move |send| {
-            let found = detect::installed(&paths, &app);
-            send(Msg::Detected(app.id.clone(), found.clone()));
-            if let (Some(i), Some(spec)) = (&found, &app.progress) {
-                send(Msg::Progress(app.id.clone(), launch::progress(&i.path, spec)));
-            }
+            send(Msg::Detected(app.id.clone(), detect::installed(&paths, &app)));
             send(Msg::Latest(app.id.clone(), github::latest(&app)));
         });
     }
 
-    /// Only the local side: installed copy and progress (when the window comes back to the front).
+    /// Keiko itself: the running bundle is the installed copy, so only GitHub is asked.
+    pub fn check_latest(&self, app: &App) {
+        let app = app.clone();
+        self.spawn(move |send| send(Msg::Latest(app.id.clone(), github::latest(&app))));
+    }
+
+    /// Only the local side (when the window comes back to the front).
     pub fn local(&self, paths: &Paths, app: &App) {
         let (paths, app) = (paths.clone(), app.clone());
-        self.spawn(move |send| {
-            let found = detect::installed(&paths, &app);
-            send(Msg::Detected(app.id.clone(), found.clone()));
-            if let (Some(i), Some(spec)) = (&found, &app.progress) {
-                send(Msg::Progress(app.id.clone(), launch::progress(&i.path, spec)));
-            }
-        });
+        self.spawn(move |send| send(Msg::Detected(app.id.clone(), detect::installed(&paths, &app))));
     }
 
     pub fn install(&self, paths: &Paths, app: &App, latest: &Latest, current: Option<&Installed>) {
@@ -76,9 +71,6 @@ impl Jobs {
             let id = app.id.clone();
             let result =
                 install::install(&paths, &app, &latest, current.as_ref(), &|p| send(Msg::Phase(id.clone(), p)));
-            if let (Ok(i), Some(spec)) = (&result, &app.progress) {
-                send(Msg::Progress(id.clone(), launch::progress(&i.path, spec)));
-            }
             send(Msg::Installed(id, result));
         });
     }
@@ -88,7 +80,7 @@ impl Jobs {
         self.spawn(move |send| send(Msg::Uninstalled(app.id.clone(), install::uninstall(&app, &installed))));
     }
 
-    /// Run a quick system action (open, reveal, browse) and report only failures.
+    /// Run a quick system action (open, reveal, browse, notify) and report only failures.
     pub fn act(&self, id: &str, action: impl FnOnce() -> Result<(), String> + Send + 'static) {
         let id = id.to_string();
         self.spawn(move |send| {

@@ -1,14 +1,12 @@
-//! Keiko's model: the catalog of dojos, GitHub releases, what state each app is in, and the
-//! progress a dojo reports. Pure: no processes, no network, no file system.
+//! Keiko's model: the catalog of dojos, GitHub releases and what state each app is in. Pure: no
+//! processes, no network, no file system.
 
 pub mod catalog;
 pub mod format;
-pub mod progress;
 pub mod release;
 pub mod state;
 
-pub use catalog::{App, Catalog, ProgressSpec};
-pub use progress::Snapshot;
+pub use catalog::{App, Catalog};
 pub use release::{Asset, Latest, Release};
 pub use state::State;
 

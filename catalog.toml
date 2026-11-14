@@ -1,0 +1,28 @@
+# The Keiko catalog: every dojo the launcher can install, update and open.
+#
+# Keiko reads each app's latest GitHub release, picks the asset named by `asset` for this Mac and
+# installs it only if its SHA-256 matches the release's `SHA256SUMS.txt` and the bundle inside
+# carries `mac_bundle_id`. Adding a dojo is a pull request to this file (see docs/adding-a-dojo.md).
+
+[[apps]]
+id = "poddojo"
+name = "PodDojo"
+tagline = "Docker and the CKAD, hands-on"
+description = "Real labs that grade themselves, timed CKAD mock exams and a spaced review deck, on your own machines."
+repo = "bujosa/poddojo"
+mac_bundle_name = "PodDojo"
+mac_bundle_id = "dev.bujosa.poddojo"
+# {version} is the release version without the leading v; {arch} is arm64 or x86_64.
+asset = "PodDojo-v{version}-macos-{arch}.zip"
+checksums = "SHA256SUMS.txt"
+color = [45, 212, 191]
+
+# Progress shown on the card: Keiko runs this binary from inside the installed app and reads the
+# JSON it prints. Pointers follow RFC 6901.
+[apps.progress]
+bin = "dojo"
+args = ["status", "--json"]
+done = "/lessons_done"
+total = "/lessons_total"
+next = "/resume/title"
+unit = "lessons"

@@ -1,0 +1,17 @@
+[package]
+name = "keiko-native"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Keiko on macOS: GitHub through curl, install, detect, open, the cache on disk"
+
+[lints]
+workspace = true
+
+[dependencies]
+keiko-core = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+sha2 = { workspace = true }
+semver = { workspace = true }

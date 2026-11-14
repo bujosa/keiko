@@ -1,0 +1,57 @@
+[workspace]
+resolver = "3"
+members = ["crates/*", "apps/*", "xtask"]
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "MIT OR Apache-2.0"
+rust-version = "1.95"
+repository = "https://github.com/bujosa/keiko"
+
+[workspace.dependencies]
+# internal
+keiko-core = { path = "crates/core" }
+keiko-native = { path = "crates/native" }
+
+# foundation
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "1"
+semver = "1"
+sha2 = "0.10"
+
+# ui
+egui = "0.36"
+eframe = { version = "0.36", default-features = false }
+image = { version = "0.25", default-features = false, features = ["png"] }
+
+[workspace.lints.rust]
+unsafe_code = "forbid"
+
+[workspace.lints.clippy]
+dbg_macro = "warn"
+# Keiko never crashes: shipped code returns `Result`/`Option` instead of panicking (AGENTS.md ›
+# Never crash). Tests may unwrap (clippy.toml).
+unwrap_used = "deny"
+expect_used = "deny"
+panic = "deny"
+todo = "deny"
+unimplemented = "deny"
+unreachable = "deny"
+
+[profile.dev]
+opt-level = 1
+debug = "line-tables-only"
+
+[profile.dev.package."*"]
+opt-level = 2
+debug = false
+
+# Ultralight: small, fast binaries.
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+strip = true
+panic = "abort"

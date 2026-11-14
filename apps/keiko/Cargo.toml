@@ -1,0 +1,17 @@
+[package]
+name = "keiko"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+publish = false
+description = "Keiko: install, update and open the dojo apps"
+
+[lints]
+workspace = true
+
+[dependencies]
+keiko-core = { workspace = true }
+keiko-native = { workspace = true }
+egui = { workspace = true }
+eframe = { workspace = true, features = ["default_fonts", "glow", "accesskit"] }
+image = { workspace = true }

@@ -7,6 +7,9 @@ static BUNDLED: &str = include_str!("../../../catalog.toml");
 #[derive(Debug, Clone, Deserialize, Serialize)]
 pub struct Catalog {
     pub apps: Vec<App>,
+    /// Keiko's own release, for self-update.
+    #[serde(default)]
+    pub launcher: Option<App>,
 }
 
 #[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
@@ -26,31 +29,10 @@ pub struct App {
     #[serde(default = "default_checksums")]
     pub checksums: String,
     pub color: [u8; 3],
-    #[serde(default)]
-    pub progress: Option<ProgressSpec>,
 }
 
 fn default_checksums() -> String {
     "SHA256SUMS.txt".into()
-}
-
-/// How to read a dojo's progress: run `bin` (inside the app's `Contents/MacOS`) with `args` and
-/// read the JSON pointers from what it prints.
-#[derive(Debug, Clone, Deserialize, Serialize, PartialEq)]
-pub struct ProgressSpec {
-    pub bin: String,
-    #[serde(default)]
-    pub args: Vec<String>,
-    pub done: String,
-    pub total: String,
-    #[serde(default)]
-    pub next: Option<String>,
-    #[serde(default = "default_unit")]
-    pub unit: String,
-}
-
-fn default_unit() -> String {
-    "lessons".into()
 }
 
 impl Catalog {
@@ -62,6 +44,9 @@ impl Catalog {
     pub fn parse(text: &str) -> Result<Catalog, String> {
         let catalog: Catalog = toml::from_str(text).map_err(|e| format!("catalog: {e}"))?;
         let mut seen = std::collections::BTreeSet::new();
+        if let Some(l) = &catalog.launcher {
+            l.validate()?;
+        }
         for app in &catalog.apps {
             app.validate()?;
             if !seen.insert(app.id.clone()) {
@@ -113,11 +98,6 @@ impl App {
         if self.mac_bundle_id.is_empty() || !self.mac_bundle_id.contains('.') {
             return err("mac_bundle_id must be a reverse-DNS identifier");
         }
-        if let Some(p) = &self.progress
-            && (!safe_name(&p.bin) || p.bin.contains(['{', '}', ' ']))
-        {
-            return err("progress.bin must be a plain file name");
-        }
         Ok(())
     }
 
@@ -151,6 +131,7 @@ mod tests {
     fn bundled_catalog_is_valid() {
         let c = Catalog::bundled().unwrap();
         assert!(c.get("poddojo").is_some());
+        assert_eq!(c.launcher.unwrap().mac_bundle_id, "dev.bujosa.keiko");
     }
 
     fn app() -> App {
@@ -175,9 +156,6 @@ mod tests {
         assert!(a.validate().is_err());
         let mut a = app();
         a.asset = "x.dmg".into();
-        assert!(a.validate().is_err());
-        let mut a = app();
-        a.progress.as_mut().unwrap().bin = "../../bin/sh".into();
         assert!(a.validate().is_err());
     }
 

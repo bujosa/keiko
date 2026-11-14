@@ -18,11 +18,11 @@
 </p>
 
 <p align="center">
-  <img src="docs/images/grid.png" alt="Keiko in the grid view (dark theme) before the first install: a welcome with the belt as a watermark, the PodDojo card with a white-belt Not installed badge and an Install button, and a dashed card for the next dojo" width="100%">
+  <img src="docs/images/grid.png" alt="Keiko in the grid view (dark theme): a banner offering the next Keiko version with Update and restart, and the PodDojo card with a yellow-belt Update available badge and Open and Update buttons" width="100%">
 </p>
 <p align="center">
-  <img src="docs/images/list.png" alt="The list view (light theme) with PodDojo installed: Continue your practice with the next lesson, a progress ring and Resume, then PodDojo with a yellow-belt Update available badge" width="100%"><br>
-  <sub>Pick up where you left off. Grid or list; the theme follows macOS or stays dark or light.</sub>
+  <img src="docs/images/list.png" alt="The same catalog in the list view (light theme), with status, installed and latest versions and the release date" width="100%"><br>
+  <sub>Grid or list; the theme follows macOS or stays dark or light.</sub>
 </p>
 
 *Keiko* (稽古) is the word for practice in the dojo: the training you come back to every day.
@@ -51,8 +51,8 @@ More are coming. A dojo is any app with GitHub releases that follows a few rules
       White belt: ready to install. Yellow belt: an update is out. Black belt: you have the latest. Update one dojo or all of them; the previous version is kept aside until the new one is in place.
     </td>
     <td width="33%" valign="top">
-      <h3>Your progress on the card</h3>
-      Keiko asks each installed dojo where you are (PodDojo: lessons done and the next one), so the launcher shows what to practise next, not only what to install.
+      <h3>Always up to date</h3>
+      Keiko checks every hour while it is open and sends a macOS notification once for each new version. Keiko updates itself the same way: <b>Update and restart</b>, with the same checks.
     </td>
   </tr>
 </table>
@@ -93,9 +93,9 @@ first check settles.
 ## Layout
 
 ```text
-catalog.toml       every dojo Keiko knows: repository, asset name, bundle id, progress command
-crates/core        catalog, releases, belts, progress (pure: no processes, no network)
-crates/native      GitHub through curl, install/update/uninstall, detection, the cache on disk
+catalog.toml       every dojo Keiko knows (repository, asset name, bundle id) and Keiko itself
+crates/core        catalog, releases, belts (pure: no processes, no network)
+crates/native      GitHub through curl, install/update/uninstall, detection, notifications, the cache
 apps/keiko         the egui window
 xtask              ci, icon, bundle, release
 ```

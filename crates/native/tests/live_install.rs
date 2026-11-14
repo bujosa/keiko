@@ -27,3 +27,29 @@ fn installs_and_updates_poddojo() {
     assert!(detect::installed(&paths, &app).is_some());
     let _ = std::fs::remove_dir_all(&root);
 }
+
+#[test]
+#[ignore = "network"]
+fn keiko_updates_itself() {
+    let root = std::env::temp_dir().join(format!("keiko-self-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&root);
+    let paths = Paths::for_tests(&root);
+    let launcher = Catalog::bundled().unwrap().launcher.unwrap();
+    // An older Keiko where the running bundle would be.
+    let old = paths.apps.join("Keiko.app");
+    std::fs::create_dir_all(old.join("Contents/MacOS")).unwrap();
+    std::fs::write(
+        old.join("Contents/Info.plist"),
+        r#"<?xml version="1.0" encoding="UTF-8"?><plist version="1.0"><dict>
+<key>CFBundleIdentifier</key><string>dev.bujosa.keiko</string>
+<key>CFBundleShortVersionString</key><string>0.1.0</string></dict></plist>"#,
+    )
+    .unwrap();
+    let current = keiko_native::Installed { path: old.clone(), version: "0.1.0".into() };
+    let latest = github::latest(&launcher).unwrap().expect("a Keiko release");
+    let updated = install::install(&paths, &launcher, &latest, Some(&current), &|_| {}).unwrap();
+    assert_eq!(updated.path, old);
+    assert_eq!(updated.version, latest.version);
+    assert!(old.join("Contents/MacOS/keiko").is_file());
+    let _ = std::fs::remove_dir_all(&root);
+}

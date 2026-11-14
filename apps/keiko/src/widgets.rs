@@ -205,20 +205,6 @@ pub fn belt(ui: &mut Ui, t: &Tokens, state: State, busy: Option<&str>) -> Respon
     resp.on_hover_text(hint)
 }
 
-/// A thin bar.
-pub fn bar(ui: &mut Ui, t: &Tokens, fraction: f32, width: f32, color: Color32) {
-    let (rect, _) = ui.allocate_exact_size(vec2(width, 4.0), Sense::hover());
-    let id = ui.id().with(("bar", rect.min.x as i32, rect.min.y as i32));
-    let f = ui.ctx().animate_value_with_time(id, fraction.clamp(0.0, 1.0), 0.3);
-    let p = ui.painter();
-    p.rect_filled(rect, 0.0, t.border);
-    let mut fill = rect;
-    fill.set_width(rect.width() * f);
-    if fill.width() > 0.5 {
-        p.rect_filled(fill, 0.0, color);
-    }
-}
-
 /// A fallback app tile: the app's colour with its initial.
 pub fn initial_tile(ui: &mut Ui, color: Color32, name: &str, size: f32) {
     let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
@@ -260,78 +246,6 @@ pub fn section_title(ui: &mut Ui, t: &Tokens, text: &str) {
         let y = ui.min_rect().center().y;
         ui.painter().line_segment([pos2(r.left() + 10.0, y), pos2(r.right(), y)], Stroke::new(1.0, t.border));
     });
-}
-
-/// A progress ring with the percentage in the middle.
-pub fn ring(ui: &mut Ui, t: &Tokens, fraction: f32, size: f32, color: Color32, unit: &str) {
-    let (rect, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    let id = ui.id().with("ring");
-    let f = ui.ctx().animate_value_with_time(id, fraction.clamp(0.0, 1.0), 0.6);
-    let c = rect.center();
-    let rad = size / 2.0 - 6.0;
-    let p = ui.painter();
-    p.circle_stroke(c, rad, Stroke::new(7.0, t.border));
-    if f > 0.001 {
-        let steps = (96.0 * f).ceil().max(2.0) as usize;
-        let pts: Vec<_> = (0..=steps)
-            .map(|i| {
-                let a = -std::f32::consts::FRAC_PI_2 + std::f32::consts::TAU * f * i as f32 / steps as f32;
-                c + vec2(a.cos(), a.sin()) * rad
-            })
-            .collect();
-        p.add(egui::Shape::line(pts, Stroke::new(7.0, color)));
-    }
-    // Where the ring starts, so 0% still points the way.
-    p.circle_filled(c - vec2(0.0, rad), 5.0, color);
-    let pct = format!("{}%", (f * 100.0).round() as u32);
-    p.text(c - vec2(0.0, 8.0), egui::Align2::CENTER_CENTER, pct, FontId::new(size * 0.22, theme::display()), t.text);
-    let g = p.layout_job(spaced(unit, 10.5, t.muted, false));
-    p.galley(pos2(c.x - g.size().x / 2.0, c.y + size * 0.1), g, t.muted);
-}
-
-/// A dashed rectangle outline.
-pub fn dashed_rect(r: Rect, stroke: Stroke) -> Vec<egui::Shape> {
-    let pts = [r.left_top(), r.right_top(), r.right_bottom(), r.left_bottom(), r.left_top()];
-    egui::Shape::dashed_line(&pts, stroke, 6.0, 5.0)
-}
-
-/// A large, faint training belt on the right of a panel, fading in from the left.
-pub fn belt_motif(r: Rect, t: &Tokens) -> egui::Shape {
-    let ink = if t.dark { Color32::from_white_alpha(12) } else { Color32::from_black_alpha(12) };
-    let y = r.center().y + 6.0;
-    let kx = r.left() + r.width() * 0.8;
-    let start = r.left() + r.width() * 0.5;
-    let mut mesh = egui::Mesh::default();
-    for (x, c) in [(start, Color32::TRANSPARENT), (r.right(), ink)] {
-        mesh.colored_vertex(pos2(x, y - 24.0), c);
-        mesh.colored_vertex(pos2(x, y + 24.0), c);
-    }
-    mesh.add_triangle(0, 1, 2);
-    mesh.add_triangle(1, 2, 3);
-    let mut shapes = vec![egui::Shape::mesh(mesh)];
-    let tail = |dx: f32| {
-        egui::Shape::convex_polygon(
-            vec![
-                pos2(kx - 18.0, y + 20.0),
-                pos2(kx + 18.0, y + 20.0),
-                pos2(kx + dx + 16.0, r.bottom()),
-                pos2(kx + dx - 16.0, r.bottom()),
-            ],
-            ink,
-            Stroke::NONE,
-        )
-    };
-    shapes.push(tail(-50.0));
-    shapes.push(tail(50.0));
-    let knot_rect = Rect::from_center_size(pos2(kx, y), vec2(70.0, 82.0));
-    shapes.push(egui::Shape::rect_filled(knot_rect, 12.0, ink));
-    shapes.push(egui::Shape::rect_stroke(
-        knot_rect,
-        12.0,
-        Stroke::new(1.5, t.seal.gamma_multiply(0.45)),
-        StrokeKind::Inside,
-    ));
-    egui::Shape::Vec(shapes)
 }
 
 /// Keiko's mark for small sizes: the vermilion seal with a knotted belt.

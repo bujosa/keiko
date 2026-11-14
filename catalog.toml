@@ -17,12 +17,16 @@ asset = "PodDojo-v{version}-macos-{arch}.zip"
 checksums = "SHA256SUMS.txt"
 color = [45, 212, 191]
 
-# Progress shown on the card: Keiko runs this binary from inside the installed app and reads the
-# JSON it prints. Pointers follow RFC 6901.
-[apps.progress]
-bin = "dojo"
-args = ["status", "--json"]
-done = "/lessons_done"
-total = "/lessons_total"
-next = "/resume/title"
-unit = "lessons"
+
+# Keiko itself: checked like any dojo and updated in place ("Update and restart").
+[launcher]
+id = "keiko"
+name = "Keiko"
+tagline = "The launcher for the dojo apps"
+description = "Install, update and open the dojos."
+repo = "bujosa/keiko"
+mac_bundle_name = "Keiko"
+mac_bundle_id = "dev.bujosa.keiko"
+asset = "Keiko-v{version}-macos-{arch}.zip"
+checksums = "SHA256SUMS.txt"
+color = [235, 82, 66]

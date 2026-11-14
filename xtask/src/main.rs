@@ -41,16 +41,21 @@ fn ci() -> Result<(), String> {
     Ok(())
 }
 
+/// Two drawings, like Apple's own icons: `keiko.svg` (with the seal's frame) for 128 px and up,
+/// `keiko-small.svg` (no frame, a larger glyph) for 16 to 64 px, where detail turns to mush.
 fn icon() -> Result<(), String> {
-    let svg = std::fs::read("assets/app-icon/keiko.svg").map_err(|e| e.to_string())?;
-    let tree = resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).map_err(|e| e.to_string())?;
-    for size in [16u32, 32, 64, 128, 256, 512, 1024] {
-        let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).ok_or("bad size")?;
-        let scale = size as f32 / tree.size().width();
-        resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
-        let path = format!("assets/app-icon/keiko-{size}.png");
-        pixmap.save_png(&path).map_err(|e| e.to_string())?;
-        eprintln!("wrote {path}");
+    for (name, sizes) in [("keiko", &[128u32, 256, 512, 1024][..]), ("keiko-small", &[16u32, 32, 64, 128][..])] {
+        let svg = std::fs::read(format!("assets/app-icon/{name}.svg")).map_err(|e| e.to_string())?;
+        let tree =
+            resvg::usvg::Tree::from_data(&svg, &resvg::usvg::Options::default()).map_err(|e| e.to_string())?;
+        for &size in sizes {
+            let mut pixmap = resvg::tiny_skia::Pixmap::new(size, size).ok_or("bad size")?;
+            let scale = size as f32 / tree.size().width();
+            resvg::render(&tree, resvg::tiny_skia::Transform::from_scale(scale, scale), &mut pixmap.as_mut());
+            let path = format!("assets/app-icon/{name}-{size}.png");
+            pixmap.save_png(&path).map_err(|e| e.to_string())?;
+            eprintln!("wrote {path}");
+        }
     }
     Ok(())
 }
@@ -103,18 +108,18 @@ fn bundle(install: bool) -> Result<(), String> {
     let _ = std::fs::remove_dir_all(iconset);
     std::fs::create_dir_all(iconset).map_err(|e| e.to_string())?;
     for (name, size) in [
-        ("icon_16x16.png", 16),
-        ("icon_16x16@2x.png", 32),
-        ("icon_32x32.png", 32),
-        ("icon_32x32@2x.png", 64),
-        ("icon_128x128.png", 128),
-        ("icon_128x128@2x.png", 256),
-        ("icon_256x256.png", 256),
-        ("icon_256x256@2x.png", 512),
-        ("icon_512x512.png", 512),
-        ("icon_512x512@2x.png", 1024),
+        ("icon_16x16.png", "keiko-small-16"),
+        ("icon_16x16@2x.png", "keiko-small-32"),
+        ("icon_32x32.png", "keiko-small-32"),
+        ("icon_32x32@2x.png", "keiko-small-64"),
+        ("icon_128x128.png", "keiko-128"),
+        ("icon_128x128@2x.png", "keiko-256"),
+        ("icon_256x256.png", "keiko-256"),
+        ("icon_256x256@2x.png", "keiko-512"),
+        ("icon_512x512.png", "keiko-512"),
+        ("icon_512x512@2x.png", "keiko-1024"),
     ] {
-        std::fs::copy(format!("assets/app-icon/keiko-{size}.png"), iconset.join(name)).map_err(|e| e.to_string())?;
+        std::fs::copy(format!("assets/app-icon/{size}.png"), iconset.join(name)).map_err(|e| e.to_string())?;
     }
     let icns = contents.join("Resources/Keiko.icns");
     step("icns", "iconutil", &["-c", "icns", &iconset.display().to_string(), "-o", &icns.display().to_string()])?;

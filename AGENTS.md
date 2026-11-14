@@ -38,6 +38,8 @@ updates itself. Everything is in English. PodDojo (`bujosa/poddojo`) is the firs
 
 ### Assets
 - Every image is original work (MIT OR Apache-2.0) or OFL fonts, listed in `ATTRIBUTION.md`.
+- The icon has two drawings: `keiko.svg` (128 px and up) and `keiko-small.svg` (16 to 64 px, top
+  bar). Change both, then `cargo xtask icon`.
 - No emojis in the UI; icons are painted (`widgets::paint_icon`).
 
 ## Quality gates (before every commit)

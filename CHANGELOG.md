@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.3
+
+The logo, tuned for every size.
+
+- **Two drawings, like Apple's own icons**: the seal with its frame from 128 px up, and a small
+  drawing for 16 to 64 px (no frame, a larger glyph) where the frame turned the kanji to mush. The
+  top bar and the update banner use the small drawing.
+- A deeper vermilion and the heaviest weight of the 稽 glyph, so its thin strokes hold at Dock sizes.
+
 ## 0.3.2
 
 A catalog that scales.

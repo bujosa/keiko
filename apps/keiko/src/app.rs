@@ -149,6 +149,8 @@ fn running_bundle() -> Option<PathBuf> {
 }
 
 static LOGO: &[u8] = include_bytes!("../../../assets/app-icon/keiko-256.png");
+/// The small drawing (no frame, a larger glyph) for the top bar and the banner.
+static LOGO_SMALL: &[u8] = include_bytes!("../../../assets/app-icon/keiko-small-128.png");
 
 fn texture(ctx: &egui::Context, name: &str, png: &[u8]) -> Option<egui::TextureHandle> {
     let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();
@@ -211,8 +213,8 @@ impl KeikoApp {
             });
         }
         let mut textures = HashMap::new();
-        if let Some(tex) = texture(ctx, "keiko", LOGO) {
-            textures.insert("keiko".to_string(), tex);
+        if let Some(tex) = texture(ctx, "keiko-small", LOGO_SMALL) {
+            textures.insert("keiko-small".to_string(), tex);
         }
         let shot = std::env::var_os("KEIKO_SCREENSHOT").map(|p| (PathBuf::from(p), Instant::now(), false));
         let mut app = KeikoApp {
@@ -919,7 +921,7 @@ impl KeikoApp {
 
     /// Keiko's icon without the macOS margin and shadow, for the top bar and the banner.
     fn logo(&self, ui: &mut Ui, size: f32) {
-        match self.textures.get("keiko") {
+        match self.textures.get("keiko-small") {
             Some(tex) => {
                 // The artwork sits on Apple's grid: 100..924 of 1024.
                 ui.add(egui::Image::new((tex.id(), vec2(size, size))).uv(GRID));

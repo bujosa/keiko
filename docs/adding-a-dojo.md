@@ -15,6 +15,12 @@ icon to `assets/apps/<id>.png`, wired in `apps/keiko/src/app.rs › app_png`).
    `CFBundleShortVersionString`. Keiko only replaces an installed app with the same identifier.
 5. **A valid code signature** (ad-hoc is accepted; `codesign --verify --deep --strict` must pass).
 
+## Try it before it ships
+
+```bash
+KEIKO_CATALOG=my-catalog.toml cargo run -p keiko --release
+```
+
 ## Naming
 
 Dojos are named `<Topic>Dojo` (PodDojo, RustDojo…): Keiko draws the topic in the text colour and

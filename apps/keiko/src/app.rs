@@ -18,6 +18,8 @@ use crate::widgets::{self, Icon, Kind};
 /// Re-check GitHub when the last check is older than this.
 const STALE: u64 = 3600;
 const MORE_W: f32 = 40.0;
+/// The artwork inside an icon drawn on Apple's grid (824 of 1024 px, centred).
+const GRID: egui::Rect = egui::Rect { min: egui::pos2(0.0977, 0.0977), max: egui::pos2(0.9023, 0.9023) };
 
 pub struct Entry {
     pub app: App,
@@ -482,7 +484,7 @@ impl KeikoApp {
                     ui.ctx().send_viewport_cmd(egui::ViewportCommand::Maximized(!zoomed));
                 }
                 ui.horizontal_centered(|ui| {
-                    widgets::mark(ui, &t, 30.0);
+                    self.logo(ui, 30.0);
                     ui.add_space(4.0);
                     let mut job = LayoutJob::default();
                     job.append(
@@ -729,7 +731,7 @@ impl KeikoApp {
                     egui::Layout::left_to_right(egui::Align::Center),
                     |ui| {
                         ui.spacing_mut().item_spacing.x = 12.0;
-                        widgets::mark(ui, &t, 24.0);
+                        self.logo(ui, 24.0);
                         ui.label(widgets::spaced(&format!("Keiko {version} is available"), 12.5, t.text, true));
                         let note = match &error {
                             Some(err) => RichText::new(err).size(14.0).color(t.bad),
@@ -772,7 +774,8 @@ impl KeikoApp {
         }
         match self.textures.get(&id) {
             Some(tex) => {
-                ui.add(egui::Image::new((tex.id(), vec2(size, size))));
+                // Dojo icons follow Apple's grid (artwork 100..924 of 1024): show the artwork only.
+                ui.add(egui::Image::new((tex.id(), vec2(size, size))).uv(GRID));
             }
             None => {
                 let [r, g, b] = self.entries[i].app.color;
@@ -877,9 +880,25 @@ impl KeikoApp {
 
     fn by_keiko(&self, ui: &mut Ui) {
         let t = self.t;
-        egui::Frame::new().fill(t.seal.gamma_multiply(0.16)).inner_margin(Margin::symmetric(8, 4)).show(ui, |ui| {
-            ui.label(widgets::spaced("by Keiko", 10.0, t.seal, false));
-        });
+        egui::Frame::new().stroke(Stroke::new(1.0, t.border_strong)).inner_margin(Margin::symmetric(7, 3)).show(
+            ui,
+            |ui| {
+                ui.label(widgets::spaced("by Keiko", 10.0, t.muted, false));
+            },
+        );
+    }
+
+    /// Keiko's icon without the macOS margin and shadow, for the top bar and the banner.
+    fn logo(&self, ui: &mut Ui, size: f32) {
+        match self.textures.get("keiko") {
+            Some(tex) => {
+                // The artwork sits on Apple's grid: 100..924 of 1024.
+                ui.add(egui::Image::new((tex.id(), vec2(size, size))).uv(GRID));
+            }
+            None => {
+                ui.allocate_exact_size(vec2(size, size), Sense::hover());
+            }
+        }
     }
 
     fn card_body(&mut self, ui: &mut Ui, i: usize, actions: &mut Vec<Action>) {
@@ -906,19 +925,20 @@ impl KeikoApp {
         widgets::belt(ui, &t, e.state(), e.busy_label().as_deref());
         ui.add_space(18.0);
 
-        ui.spacing_mut().item_spacing.y = 5.0;
-        let size = e.latest.as_ref().and_then(|l| l.asset.as_ref()).map(|a| format::size(a.size));
-        if let Some(s) = size {
-            ui.label(RichText::new(format!("Download size: {s}")).size(14.0).color(t.text.gamma_multiply(0.85)));
-        }
+        ui.spacing_mut().item_spacing.y = 0.0;
         ui.add(
-            egui::Label::new(RichText::new(&e.app.description).size(14.0).color(t.text.gamma_multiply(0.85))).wrap(),
+            egui::Label::new(RichText::new(&e.app.description).size(14.5).color(t.text.gamma_multiply(0.88))).wrap(),
         );
+        // One line of facts, like a spec sheet: size and release date.
+        let size = e.latest.as_ref().and_then(|l| l.asset.as_ref()).map(|a| format::size(a.size));
         let released = e.latest.as_ref().and_then(|l| l.published_at.as_deref()).and_then(format::date);
-        if let Some(d) = released {
-            ui.label(RichText::new(format!("Released: {d}")).size(14.0).color(t.muted));
+        let facts: Vec<String> = [size, released.map(|d| format!("Released {d}"))].into_iter().flatten().collect();
+        if !facts.is_empty() {
+            ui.add_space(12.0);
+            ui.label(RichText::new(facts.join("  ·  ")).family(theme::mono()).size(12.5).color(t.muted));
         }
         if let Some(err) = &e.error {
+            ui.add_space(8.0);
             ui.add(egui::Label::new(RichText::new(err).size(13.0).color(t.bad)).wrap());
         }
         ui.add_space(18.0);

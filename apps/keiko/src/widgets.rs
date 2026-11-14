@@ -199,8 +199,9 @@ pub fn belt(ui: &mut Ui, t: &Tokens, state: State, busy: Option<&str>) -> Respon
     let (rect, resp) = ui.allocate_exact_size(size, Sense::hover());
     let p = ui.painter();
     p.rect_stroke(rect, CornerRadius::same(2), Stroke::new(1.0, color.gamma_multiply(0.55)), StrokeKind::Inside);
-    let sw = Rect::from_min_size(pos2(rect.left() + 9.0, rect.center().y - 6.0), vec2(22.0, 12.0));
-    knot(p, sw, swatch, t.border_strong);
+    // The belt: a short solid band in the belt's colour.
+    let sw = Rect::from_min_size(pos2(rect.left() + 10.0, rect.center().y - 3.5), vec2(20.0, 7.0));
+    p.rect(sw, CornerRadius::same(2), swatch, Stroke::new(1.0, t.border_strong), StrokeKind::Inside);
     p.galley(pos2(sw.right() + 8.0, rect.center().y - galley.size().y / 2.0), galley, color);
     resp.on_hover_text(hint)
 }
@@ -219,25 +220,6 @@ pub fn initial_tile(ui: &mut Ui, color: Color32, name: &str, size: f32) {
     );
 }
 
-/// A tiny knotted belt in `fill` (the status badge's swatch).
-fn knot(p: &egui::Painter, r: Rect, fill: Color32, edge: Color32) {
-    let s = Stroke::new(1.0, edge);
-    let band = Rect::from_min_size(pos2(r.left(), r.top() + 2.0), vec2(r.width(), 4.0));
-    p.rect(band, 0.5, fill, s, StrokeKind::Inside);
-    let cx = r.center().x;
-    let tail = |dx: f32| {
-        vec![
-            pos2(cx - 1.5, r.top() + 5.0),
-            pos2(cx + 1.5, r.top() + 5.0),
-            pos2(cx + dx + 1.5, r.bottom()),
-            pos2(cx + dx - 1.5, r.bottom()),
-        ]
-    };
-    p.add(egui::Shape::convex_polygon(tail(-4.0), fill, s));
-    p.add(egui::Shape::convex_polygon(tail(4.0), fill, s));
-    p.rect(Rect::from_center_size(pos2(cx, r.top() + 4.0), vec2(5.0, 7.0)), 1.0, fill, s, StrokeKind::Inside);
-}
-
 /// A section heading: a spaced label and a hairline to the right edge.
 pub fn section_title(ui: &mut Ui, t: &Tokens, text: &str) {
     ui.horizontal(|ui| {
@@ -246,36 +228,4 @@ pub fn section_title(ui: &mut Ui, t: &Tokens, text: &str) {
         let y = ui.min_rect().center().y;
         ui.painter().line_segment([pos2(r.left() + 10.0, y), pos2(r.right(), y)], Stroke::new(1.0, t.border));
     });
-}
-
-/// Keiko's mark for small sizes: the vermilion seal with a knotted belt.
-pub fn mark(ui: &mut Ui, t: &Tokens, size: f32) {
-    let (r, _) = ui.allocate_exact_size(Vec2::splat(size), Sense::hover());
-    let p = ui.painter();
-    p.rect_filled(r, size * 0.22, t.seal);
-    let paper = Color32::from_rgb(252, 248, 239);
-    let u = size / 30.0;
-    let y = r.top() + 12.5 * u;
-    p.rect_filled(
-        Rect::from_x_y_ranges(r.left() + 4.0 * u..=r.right() - 4.0 * u, y - 2.5 * u..=y + 2.5 * u),
-        0.5,
-        paper,
-    );
-    let cx = r.center().x;
-    let tail = |dx: f32| {
-        egui::Shape::convex_polygon(
-            vec![
-                pos2(cx - 2.0 * u, y + 2.0 * u),
-                pos2(cx + 2.0 * u, y + 2.0 * u),
-                pos2(cx + dx + 2.2 * u, r.bottom() - 5.0 * u),
-                pos2(cx + dx - 2.2 * u, r.bottom() - 5.0 * u),
-            ],
-            paper,
-            Stroke::NONE,
-        )
-    };
-    p.add(tail(-5.0 * u));
-    p.add(tail(5.0 * u));
-    let knot = Rect::from_center_size(pos2(cx, y), vec2(7.0 * u, 9.0 * u));
-    p.rect(knot, 1.5 * u, paper, Stroke::new(1.2 * u, t.seal), StrokeKind::Outside);
 }

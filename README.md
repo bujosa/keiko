@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/app-icon/keiko-256.png" width="128" height="128" alt="Keiko icon: a white training belt knotted on a vermilion seal">
+  <img src="assets/app-icon/keiko-256.png" width="128" height="128" alt="Keiko icon: the kanji 稽 (keiko, practice) on a vermilion hanko seal">
 </p>
 
 <h1 align="center">Keiko</h1>

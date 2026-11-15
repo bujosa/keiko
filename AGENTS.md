@@ -44,11 +44,12 @@ updates itself. Everything is in English. PodDojo (`bujosa/poddojo`) is the firs
 
 ## Quality gates (before every commit)
 No hosted CI. `cargo xtask ci` = fmt check, clippy `-D warnings`, tests. Before a release also run
-`cargo test -p keiko-native -- --ignored` (a real install of PodDojo into a temp folder) and look at
+`cargo test -p keiko-native -- --ignored` (real dojo install/uninstall/restore and launcher update in temp folders) and look at
 the window (`KEIKO_SCREENSHOT=<png>`). Conventional Commits.
 
 ## Running
 - App: `cargo run -p keiko --release`.
 - `KEIKO_CATALOG=<file>` loads a catalog from disk (try a new dojo; screenshots of a full catalog).
 - `KEIKO_HOME=<dir>` isolates settings and cache; `KEIKO_APPS_DIR=<dir>` installs and detects there
-  only (use both in tests and screenshots, never touch the user's ~/Applications from tests).
+  only. With both overrides, Trash is isolated at `KEIKO_HOME/Trash` too (never touch the user's
+  ~/Applications or real Trash from tests).

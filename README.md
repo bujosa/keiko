@@ -101,6 +101,10 @@ apps/keiko         the egui window
 xtask              ci, icon, bundle, release
 ```
 
+## Contributing
+
+Start with [CONTRIBUTING.md](CONTRIBUTING.md) for local setup, contribution paths, validation and pull requests. Bug reports, teaching improvements and focused code changes are welcome.
+
 ## License
 
 MIT OR Apache-2.0, at your option. Fonts are under the SIL Open Font License; see

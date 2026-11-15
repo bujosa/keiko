@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.5
+
+- Reserve unique Trash destinations; never overwrite a trashed bundle, file or dangling link.
+- Keep the installed app intact when a move fails; cross-volume moves use Finder instead of a copy/delete fallback.
+- Isolate Trash with both development overrides, and verify uninstall/restore and learner-data preservation for both dojos.
+- Add contributor setup, validation, issue/PR templates and uninstall/restore guidance.
+
 ## 0.3.4
 
 - Add TypeDojo to the catalog with its original icon and verified macOS Apple Silicon release.

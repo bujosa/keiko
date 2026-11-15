@@ -1258,7 +1258,7 @@ impl KeikoApp {
             ui.label(RichText::new(format!("Move {name} to the Trash?")).size(20.0).family(theme::display()));
             ui.add_space(8.0);
             ui.label(
-                RichText::new("The app goes to the Trash, where you can restore it. Its data stays on this Mac.")
+                RichText::new("The app goes to the Trash and its saved data stays on this Mac. If the dojo is running, close it first.")
                     .size(14.5)
                     .color(t.muted),
             );
@@ -1280,7 +1280,7 @@ impl KeikoApp {
             let e = &mut self.entries[i];
             if go && let Some(installed) = e.installed.clone() {
                 e.busy = Some(Busy::Uninstalling);
-                self.jobs.uninstall(&e.app, &installed);
+                self.jobs.uninstall(&self.paths, &e.app, &installed);
             }
         }
     }

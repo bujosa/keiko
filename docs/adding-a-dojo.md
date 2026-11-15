@@ -18,6 +18,8 @@ icon to `assets/apps/<id>.png`, wired in `apps/keiko/src/app.rs › app_png`).
 ## Try it before it ships
 
 ```bash
+export KEIKO_HOME="$(mktemp -d -t keiko-catalog-data)"
+export KEIKO_APPS_DIR="$(mktemp -d -t keiko-catalog-apps)"
 KEIKO_CATALOG=my-catalog.toml cargo run -p keiko --release
 ```
 
@@ -25,3 +27,5 @@ KEIKO_CATALOG=my-catalog.toml cargo run -p keiko --release
 
 Dojos are named `<Topic>Dojo` (PodDojo, RustDojo…): Keiko draws the topic in the text colour and
 "Dojo" in the entry's `color`.
+
+Both overrides also isolate Trash. Test install, open, uninstall, restore and reinstall against the published assets before asking for catalog review. See [CONTRIBUTING.md](../CONTRIBUTING.md) and [uninstall behavior](uninstalling.md).

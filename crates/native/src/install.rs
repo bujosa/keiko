@@ -152,23 +152,39 @@ fn place(fresh: &Path, dest: &Path, app: &App) -> Result<(), String> {
 }
 
 /// Move an installed app to the Trash (it can be restored from there).
-pub fn uninstall(app: &App, installed: &Installed) -> Result<PathBuf, String> {
+pub fn uninstall(paths: &Paths, app: &App, installed: &Installed) -> Result<PathBuf, String> {
+    let metadata = std::fs::symlink_metadata(&installed.path).map_err(|e| format!("cannot read the app: {e}"))?;
+    if !metadata.is_dir() || metadata.file_type().is_symlink() {
+        return Err("Keiko only moves app directories to the Trash, not links or files".into());
+    }
     if detect::plist_value(&installed.path, "CFBundleIdentifier").as_deref() != Some(app.mac_bundle_id.as_str()) {
         return Err(format!("{} is not {}", installed.path.display(), app.name));
     }
-    let home = std::env::var_os("HOME").map(PathBuf::from).ok_or("HOME is not set")?;
-    let trash = home.join(".Trash");
-    let mut target = trash.join(format!("{}.app", app.mac_bundle_name));
-    if target.exists() {
-        target = trash.join(format!("{} {}.app", app.mac_bundle_name, keiko_core::now()));
+    std::fs::create_dir_all(&paths.trash).map_err(|e| format!("cannot open the Trash; app kept: {e}"))?;
+    for index in 0..1000 {
+        let name = if index == 0 {
+            format!("{}.app", app.mac_bundle_name)
+        } else {
+            format!("{} ({index}).app", app.mac_bundle_name)
+        };
+        let target = paths.trash.join(name);
+        // Claim an empty destination atomically, including when a dangling link exists.
+        match std::fs::create_dir(&target) {
+            Ok(()) => {}
+            Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => continue,
+            Err(e) => return Err(format!("cannot reserve a place in the Trash; app kept: {e}")),
+        }
+        // A rename preserves the complete bundle. Never copy over another trashed app or
+        // delete the source after a cross-volume copy: failures leave the installed app intact.
+        return match std::fs::rename(&installed.path, &target) {
+            Ok(()) => Ok(target),
+            Err(e) => {
+                let _ = std::fs::remove_dir(&target); // Only our empty reservation.
+                Err(format!("cannot move {} to the Trash; app kept: {e}. You can use Finder instead", app.name))
+            }
+        };
     }
-    std::fs::rename(&installed.path, &target)
-        .or_else(|_| {
-            tool("/usr/bin/ditto", &[installed.path.as_os_str(), target.as_os_str()], "move to Trash")?;
-            std::fs::remove_dir_all(&installed.path).map_err(|e| e.to_string())
-        })
-        .map_err(|e| format!("cannot move {} to the Trash: {e}", installed.path.display()))?;
-    Ok(target)
+    Err("the Trash already has too many copies of this app; app kept".into())
 }
 
 #[cfg(test)]
@@ -240,5 +256,85 @@ mod tests {
         let paths = Paths::for_tests(&d);
         fake_app(&paths.apps, "com.example.other", "1.0.0");
         assert!(detect::installed(&paths, &app()).is_none());
+    }
+
+    #[test]
+    fn uninstall_can_be_restored_without_losing_learner_data() {
+        let d = tmp("uninstall-restore");
+        let paths = Paths::for_tests(&d);
+        fake_app(&paths.apps, "dev.bujosa.poddojo", "0.3.2");
+        std::fs::create_dir_all(&paths.data).unwrap();
+        let progress = paths.data.join("progress.json");
+        std::fs::write(&progress, b"learner progress stays here").unwrap();
+        let installed = detect::installed(&paths, &app()).unwrap();
+        std::fs::write(installed.path.join("Contents/MacOS/payload"), b"complete bundle").unwrap();
+
+        let trashed = uninstall(&paths, &app(), &installed).unwrap();
+        assert_eq!(trashed, paths.trash.join("PodDojo.app"));
+        assert!(!installed.path.exists());
+        assert!(detect::installed(&paths, &app()).is_none());
+        assert_eq!(std::fs::read(trashed.join("Contents/MacOS/payload")).unwrap(), b"complete bundle");
+        assert_eq!(std::fs::read(&progress).unwrap(), b"learner progress stays here");
+
+        std::fs::rename(&trashed, &installed.path).unwrap();
+        assert_eq!(detect::installed(&paths, &app()), Some(installed));
+        assert_eq!(std::fs::read(&progress).unwrap(), b"learner progress stays here");
+    }
+
+    #[test]
+    fn uninstall_never_overwrites_trashed_bundles_files_or_links() {
+        let d = tmp("uninstall-collisions");
+        let paths = Paths::for_tests(&d);
+        fake_app(&paths.apps, "dev.bujosa.poddojo", "0.3.2");
+        let old = fake_app(&paths.trash, "com.example.older", "0.1.0");
+        let occupied = paths.trash.join("PodDojo (1).app");
+        std::fs::write(&occupied, b"do not replace").unwrap();
+        let link = paths.trash.join("PodDojo (2).app");
+        std::os::unix::fs::symlink(d.join("missing"), &link).unwrap();
+
+        let installed = detect::installed(&paths, &app()).unwrap();
+        let trashed = uninstall(&paths, &app(), &installed).unwrap();
+        assert_eq!(trashed, paths.trash.join("PodDojo (3).app"));
+        assert_eq!(detect::plist_value(&old, "CFBundleIdentifier").as_deref(), Some("com.example.older"));
+        assert_eq!(std::fs::read(occupied).unwrap(), b"do not replace");
+        assert!(std::fs::symlink_metadata(link).unwrap().file_type().is_symlink());
+    }
+
+    #[test]
+    fn uninstall_refuses_other_identifiers_and_source_links() {
+        let d = tmp("uninstall-identity");
+        let paths = Paths::for_tests(&d);
+        let other = fake_app(&paths.apps, "com.example.other", "9.9.9");
+        let installed = Installed { path: other.clone(), version: "9.9.9".into() };
+        assert!(uninstall(&paths, &app(), &installed).is_err());
+        assert!(other.exists());
+        assert!(!paths.trash.exists());
+
+        let original = fake_app(&d.join("original"), "dev.bujosa.poddojo", "0.3.2");
+        let linked = d.join("linked.app");
+        std::os::unix::fs::symlink(&original, &linked).unwrap();
+        let installed = Installed { path: linked.clone(), version: "0.3.2".into() };
+        assert!(uninstall(&paths, &app(), &installed).is_err());
+        assert!(original.exists());
+        assert!(linked.exists());
+        assert!(!paths.trash.exists());
+    }
+
+    #[test]
+    fn unavailable_trash_and_failed_moves_keep_the_installed_bundle() {
+        let d = tmp("uninstall-failure");
+        let mut paths = Paths::for_tests(&d);
+        fake_app(&paths.apps, "dev.bujosa.poddojo", "0.3.2");
+        let installed = detect::installed(&paths, &app()).unwrap();
+        std::fs::write(&paths.trash, b"not a directory").unwrap();
+        assert!(uninstall(&paths, &app(), &installed).unwrap_err().contains("app kept"));
+        assert_eq!(detect::installed(&paths, &app()), Some(installed.clone()));
+
+        // Moving a directory into itself fails on the filesystem. The reservation is removed,
+        // while the complete original bundle remains available to launch or retry.
+        paths.trash = installed.path.join("cannot-move-inside-itself");
+        assert!(uninstall(&paths, &app(), &installed).unwrap_err().contains("app kept"));
+        assert!(!paths.trash.join("PodDojo.app").exists());
+        assert_eq!(detect::installed(&paths, &app()), Some(installed));
     }
 }

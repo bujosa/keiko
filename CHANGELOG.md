@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.3.6
+
+- Show absent dojos with darker cards, monochrome icons and muted names/descriptions.
+- Restore their brand colour smoothly on hover; installed and active dojos stay in colour.
+- Apply the same identity treatment in grid and list views while keeping Install, status and error controls legible and active.
+- Refresh section layout identity when an app moves between Available and Installed, so row actions redraw immediately.
+
 ## 0.3.5
 
 - Reserve unique Trash destinations; never overwrite a trashed bundle, file or dangling link.

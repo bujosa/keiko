@@ -18,6 +18,8 @@ use crate::widgets::{self, Icon, Kind};
 /// Re-check GitHub when the last check is older than this.
 const STALE: u64 = 3600;
 const MORE_W: f32 = widgets::CONTROL_H;
+const CARD_HEADER_H: f32 = 40.0;
+const CARD_PAD: i8 = 16;
 /// The artwork inside an icon drawn on Apple's grid (824 of 1024 px, centred).
 const GRID: egui::Rect = egui::Rect { min: egui::pos2(0.0977, 0.0977), max: egui::pos2(0.9023, 0.9023) };
 
@@ -92,7 +94,7 @@ impl Filter {
             Filter::All => true,
             Filter::Installed => e.installed.is_some(),
             Filter::Updates => e.state() == State::UpdateAvailable,
-            Filter::Available => e.installed.is_none(),
+            Filter::Available => e.state() == State::NotInstalled,
         }
     }
 }
@@ -121,7 +123,7 @@ pub struct KeikoApp {
     confirm_uninstall: Option<String>,
     pending: usize,
     was_focused: bool,
-    /// Tallest card measured last frame: every card in the grid gets this height.
+    /// Tallest intrinsic card last frame; shared footer alignment must not feed its own padding back in.
     card_h: f32,
     next_card_h: f32,
     /// Keiko replaced its own bundle: open it again and quit.
@@ -134,6 +136,7 @@ pub struct KeikoApp {
 fn app_png(id: &str) -> Option<&'static [u8]> {
     match id {
         "poddojo" => Some(include_bytes!("../../../assets/apps/poddojo.png")),
+        "typedojo" => Some(include_bytes!("../../../assets/apps/typedojo.png")),
         _ => None,
     }
 }
@@ -449,6 +452,9 @@ impl KeikoApp {
                 });
             },
         );
+        if self.settings.view == View::Grid && (self.next_card_h - self.card_h).abs() > 0.5 {
+            ctx.request_repaint();
+        }
         for a in actions {
             self.act(a);
         }
@@ -565,78 +571,101 @@ impl KeikoApp {
     }
 
     fn toolbar(&mut self, ui: &mut Ui, actions: &mut Vec<Action>) {
-        let t = self.t;
+        let updates: Vec<String> = self
+            .entries
+            .iter()
+            .filter(|e| e.state() == State::UpdateAvailable && e.busy.is_none() && !e.launcher)
+            .map(|e| e.app.id.clone())
+            .collect();
+        let split = ui.available_width() < 1180.0 + if updates.is_empty() { 0.0 } else { 170.0 };
         ui.horizontal(|ui| {
-            let spin = self.pending > 0;
-            let r = widgets::icon_button(ui, &t, Icon::Refresh, false, "Check GitHub for new releases");
-            if spin {
-                ui.painter().rect_filled(r.rect.shrink(1.0), 1.0, t.bg.gamma_multiply(0.6));
-                ui.put(r.rect, egui::Spinner::new().size(16.0).color(t.text));
-            } else if r.clicked() {
-                self.refresh();
+            self.toolbar_navigation(ui);
+            if !split {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.toolbar_controls(ui, actions, &updates);
+                });
             }
-            ui.add_space(14.0);
-            for (f, name) in Filter::ALL {
-                let count = self.entries.iter().filter(|e| !e.launcher && f.keeps(e)).count();
-                if widgets::tab(ui, &t, name, count, self.filter == f).clicked() {
-                    self.filter = f;
-                }
+        });
+        if split {
+            ui.add_space(12.0);
+            ui.horizontal(|ui| {
+                ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
+                    self.toolbar_controls(ui, actions, &updates);
+                });
+            });
+        }
+    }
+
+    fn toolbar_navigation(&mut self, ui: &mut Ui) {
+        let t = self.t;
+        let spin = self.pending > 0;
+        let r = widgets::icon_button(ui, &t, Icon::Refresh, false, "Check GitHub for new releases");
+        if spin {
+            ui.painter().rect_filled(r.rect.shrink(1.0), 1.0, t.bg.gamma_multiply(0.6));
+            ui.put(r.rect, egui::Spinner::new().size(16.0).color(t.text));
+        } else if r.clicked() {
+            self.refresh();
+        }
+        ui.add_space(14.0);
+        for (f, name) in Filter::ALL {
+            let count = self.entries.iter().filter(|e| !e.launcher && f.keeps(e)).count();
+            if widgets::tab(ui, &t, name, count, self.filter == f).clicked() {
+                self.filter = f;
             }
-            ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                if widgets::icon_button(ui, &t, Icon::List, self.settings.view == View::List, "List").clicked() {
-                    self.settings.view = View::List;
-                    self.save_settings();
-                }
-                if widgets::icon_button(ui, &t, Icon::Grid, self.settings.view == View::Grid, "Grid").clicked() {
-                    self.settings.view = View::Grid;
-                    self.save_settings();
-                }
-                ui.add_space(6.0);
-                ui.add(
-                    egui::TextEdit::singleline(&mut self.search)
-                        .hint_text("Search dojos")
-                        .desired_width(220.0)
-                        .margin(vec2(12.0, 9.0))
-                        .font(FontId::new(15.0, egui::FontFamily::Proportional)),
-                );
-                ui.add_space(6.0);
-                let before = self.settings.sort;
-                let text = |s: Sort| match s {
-                    Sort::Name => "Name (A–Z)",
-                    Sort::Updated => "Recently released",
-                    Sort::Status => "Status",
-                };
-                egui::ComboBox::from_id_salt("sort")
-                    .selected_text(RichText::new(text(self.settings.sort)).size(15.0))
-                    .width(180.0)
-                    .height(240.0)
-                    .show_ui(ui, |ui| {
-                        for s in [Sort::Name, Sort::Updated, Sort::Status] {
-                            ui.selectable_value(&mut self.settings.sort, s, text(s));
-                        }
-                    });
-                if self.settings.sort != before {
-                    self.save_settings();
-                }
-                widgets::label(ui, "Sort", 12.0, t.muted);
-                let updates: Vec<String> = self
-                    .entries
-                    .iter()
-                    .filter(|e| e.state() == State::UpdateAvailable && e.busy.is_none() && !e.launcher)
-                    .map(|e| e.app.id.clone())
-                    .collect();
-                if !updates.is_empty() {
-                    ui.add_space(10.0);
-                    let label = match updates.len() {
-                        1 => "Update 1 app".to_string(),
-                        n => format!("Update {n} apps"),
-                    };
-                    if widgets::button(ui, &t, &label, Kind::Primary, 0.0, true).clicked() {
-                        actions.extend(updates.into_iter().map(Action::Install));
-                    }
+        }
+    }
+
+    fn toolbar_controls(&mut self, ui: &mut Ui, actions: &mut Vec<Action>, updates: &[String]) {
+        let t = self.t;
+        ui.spacing_mut().interact_size.y = widgets::CONTROL_H;
+        let search_width =
+            (ui.available_width() - 357.0 - if updates.is_empty() { 0.0 } else { 170.0 }).clamp(120.0, 220.0);
+        if widgets::icon_button(ui, &t, Icon::List, self.settings.view == View::List, "List").clicked() {
+            self.settings.view = View::List;
+            self.save_settings();
+        }
+        if widgets::icon_button(ui, &t, Icon::Grid, self.settings.view == View::Grid, "Grid").clicked() {
+            self.settings.view = View::Grid;
+            self.save_settings();
+        }
+        ui.add_space(6.0);
+        ui.add(
+            egui::TextEdit::singleline(&mut self.search)
+                .hint_text("Search dojos")
+                .desired_width(search_width)
+                .margin(vec2(12.0, 9.0))
+                .font(FontId::new(15.0, egui::FontFamily::Proportional)),
+        );
+        ui.add_space(6.0);
+        let before = self.settings.sort;
+        let text = |s: Sort| match s {
+            Sort::Name => "Name (A–Z)",
+            Sort::Updated => "Recently released",
+            Sort::Status => "Status",
+        };
+        egui::ComboBox::from_id_salt("sort")
+            .selected_text(RichText::new(text(self.settings.sort)).size(15.0))
+            .width(180.0)
+            .height(240.0)
+            .show_ui(ui, |ui| {
+                for s in [Sort::Name, Sort::Updated, Sort::Status] {
+                    ui.selectable_value(&mut self.settings.sort, s, text(s));
                 }
             });
-        });
+        if self.settings.sort != before {
+            self.save_settings();
+        }
+        widgets::label(ui, "Sort", 12.0, t.muted);
+        if !updates.is_empty() {
+            ui.add_space(10.0);
+            let label = match updates.len() {
+                1 => "Update 1 app".to_string(),
+                n => format!("Update {n} apps"),
+            };
+            if widgets::button(ui, &t, &label, Kind::Primary, 0.0, true).clicked() {
+                actions.extend(updates.iter().cloned().map(Action::Install));
+            }
+        }
     }
 
     fn footer(&mut self, ui: &mut Ui) {
@@ -713,7 +742,12 @@ impl KeikoApp {
             ui.vertical_centered(|ui| {
                 let text = if self.search.trim().is_empty() {
                     match self.filter {
-                        Filter::Updates => "Everything is up to date.".to_string(),
+                        Filter::Updates if self.pending > 0 => "Checking for updates…".to_string(),
+                        Filter::Updates => "No updates found.".to_string(),
+                        Filter::Available if self.pending > 0 => "Checking available downloads…".to_string(),
+                        Filter::Available => {
+                            "No installable dojos right now. See All for the full catalog.".to_string()
+                        }
                         Filter::Installed => "No dojo installed yet.".to_string(),
                         _ => "Nothing here yet.".to_string(),
                     }
@@ -727,7 +761,9 @@ impl KeikoApp {
         let groups: Vec<(&str, Vec<usize>)> = if self.filter == Filter::All {
             let (installed, other): (Vec<usize>, Vec<usize>) =
                 order.into_iter().partition(|i| self.entries[*i].installed.is_some());
-            vec![("Installed", installed), ("Available", other)]
+            let (available, unavailable): (Vec<usize>, Vec<usize>) =
+                other.into_iter().partition(|i| self.entries[*i].state() == State::NotInstalled);
+            vec![("Installed", installed), ("Available", available), ("Not available", unavailable)]
         } else {
             let title = Filter::ALL.iter().find(|(f, _)| *f == self.filter).map(|(_, n)| *n).unwrap_or("");
             vec![(title, order)]
@@ -886,10 +922,9 @@ impl KeikoApp {
             ui.set_width(width - 2.0);
             ui.set_min_height(self.card_h);
             ui.spacing_mut().item_spacing.y = 0.0;
-            let top = ui.cursor().top();
             // Header strip: the version on the left, the belt on the right.
-            egui::Frame::new().inner_margin(Margin::symmetric(16, 0)).show(ui, |ui| {
-                ui.set_height(40.0);
+            egui::Frame::new().inner_margin(Margin::symmetric(CARD_PAD, 0)).show(ui, |ui| {
+                ui.set_height(CARD_HEADER_H);
                 ui.horizontal_centered(|ui| {
                     let job = self.version_job(&self.entries[i]);
                     ui.label(job);
@@ -901,11 +936,13 @@ impl KeikoApp {
             });
             let line = ui.allocate_exact_size(vec2(width - 2.0, 1.0), Sense::hover()).0;
             ui.painter().rect_filled(line, 0.0, t.border);
-            let body = egui::Frame::new().inner_margin(Margin::same(16)).show(ui, |ui| {
+            let body_height = (self.card_h - CARD_HEADER_H - 1.0 - f32::from(CARD_PAD) * 2.0).max(0.0);
+            let body = egui::Frame::new().inner_margin(Margin::same(CARD_PAD)).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                self.card_body(ui, i, actions);
+                self.card_body(ui, i, body_height, actions)
             });
-            self.next_card_h = self.next_card_h.max(body.response.rect.bottom() - top);
+            let intrinsic = CARD_HEADER_H + 1.0 + f32::from(CARD_PAD) * 2.0 + body.inner;
+            self.next_card_h = self.next_card_h.max(intrinsic);
         });
         let rect = inner.response.rect;
         let hovered = ui.rect_contains_pointer(rect);
@@ -932,10 +969,11 @@ impl KeikoApp {
         }
     }
 
-    fn card_body(&mut self, ui: &mut Ui, i: usize, actions: &mut Vec<Action>) {
+    fn card_body(&mut self, ui: &mut Ui, i: usize, height: f32, actions: &mut Vec<Action>) -> f32 {
         let t = self.t;
         let content_w = ui.available_width();
-        ui.horizontal(|ui| {
+        let top = ui.cursor().top();
+        ui.allocate_ui_with_layout(vec2(content_w, 48.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
             self.icon(ui, i, 44.0);
             ui.vertical(|ui| {
@@ -958,21 +996,29 @@ impl KeikoApp {
         );
         job.wrap.max_rows = 2;
         job.wrap.overflow_character = Some('…');
-        ui.label(job);
+        let line_h = ui.fonts_mut(|fonts| fonts.row_height(&FontId::proportional(13.5)));
+        ui.allocate_ui_with_layout(vec2(content_w, line_h * 2.0), egui::Layout::top_down(egui::Align::Min), |ui| {
+            ui.label(job);
+        });
         // One line of facts, like a spec sheet: size and release date.
         let size = e.latest.as_ref().and_then(|l| l.asset.as_ref()).map(|a| format::size(a.size));
         let released = e.latest.as_ref().and_then(|l| l.published_at.as_deref()).and_then(format::date);
         let facts: Vec<String> = [size, released].into_iter().flatten().collect();
-        if !facts.is_empty() {
-            ui.add_space(8.0);
-            ui.label(RichText::new(facts.join("  ·  ")).family(theme::mono()).size(11.5).color(t.muted));
-        }
+        ui.add_space(8.0);
+        let facts_h = ui.fonts_mut(|fonts| fonts.row_height(&FontId::new(11.5, theme::mono())));
+        ui.allocate_ui_with_layout(vec2(content_w, facts_h), egui::Layout::top_down(egui::Align::Min), |ui| {
+            if !facts.is_empty() {
+                ui.label(RichText::new(facts.join("  ·  ")).family(theme::mono()).size(11.5).color(t.muted));
+            }
+        });
         if let Some(err) = &e.error {
             ui.add_space(6.0);
             ui.add(egui::Label::new(RichText::new(err).size(12.5).color(t.bad)).truncate()).on_hover_text(err.as_str());
         }
-        ui.add_space(14.0);
+        let intrinsic = ui.cursor().top() - top + 14.0 + widgets::CONTROL_H;
+        ui.add_space(14.0 + (height - intrinsic).max(0.0));
         self.card_actions(ui, i, content_w, actions);
+        intrinsic
     }
 
     fn card_actions(&self, ui: &mut Ui, i: usize, width: f32, actions: &mut Vec<Action>) {
@@ -1062,121 +1108,136 @@ impl KeikoApp {
 
     fn list(&mut self, ui: &mut Ui, group: &[usize], actions: &mut Vec<Action>) {
         let t = self.t;
+        // Shared cell rectangles keep headings, values and actions aligned. Compact lists
+        // retain name, status and actions; their installed version moves below the name.
+        let gap = 12.0;
         let width = ui.available_width();
-        let cols = [64.0, 0.0, 240.0, 110.0, 110.0, 140.0, 0.0];
-        let fixed: f32 = cols.iter().sum::<f32>() + 260.0;
-        let name_w = (width - fixed).max(220.0);
+        let compact = width < 1044.0;
+        let order: &[usize] = if compact { &[0, 1, 2, 6] } else { &[0, 1, 2, 3, 4, 5, 6] };
+        let mut cols = [44.0, 0.0, 170.0, 100.0, 100.0, 140.0, 164.0];
+        let overhead = order.iter().map(|column| cols[*column]).sum::<f32>()
+            + gap * (order.len() - 1) as f32
+            + f32::from(CARD_PAD) * 2.0
+            + 2.0;
+        cols[1] = (width - overhead).max(140.0);
         egui::Frame::new().stroke(Stroke::new(1.0, t.border)).show(ui, |ui| {
             ui.set_width(width - 2.0);
             ui.spacing_mut().item_spacing.y = 0.0;
-            egui::Frame::new().fill(t.panel).inner_margin(Margin::symmetric(16, 10)).show(ui, |ui| {
-                ui.set_width(width - 34.0);
-                ui.horizontal(|ui| {
-                    for (text, w) in [
-                        ("", cols[0]),
-                        ("Dojo", name_w),
-                        ("Status", cols[2]),
-                        ("Installed", cols[3]),
-                        ("Latest", cols[4]),
-                        ("Released", cols[5]),
-                    ] {
-                        ui.allocate_ui_with_layout(
-                            vec2(w, 18.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.set_width(w);
-                                widgets::label(ui, text, 11.0, t.muted);
-                            },
-                        );
-                    }
-                });
-            });
+            let header = ui.allocate_exact_size(vec2(width - 2.0, 42.0), Sense::hover()).0;
+            ui.painter().rect_filled(header, 0.0, t.panel);
+            let mut x = header.left() + f32::from(CARD_PAD);
+            let headings = ["", "Dojo", "Status", "Installed", "Latest", "Released", ""];
+            for &column in order {
+                let text = headings[column];
+                let w = cols[column];
+                let rect = egui::Rect::from_min_size(egui::pos2(x, header.top()), vec2(w, header.height()));
+                let mut cell = ui.new_child(
+                    egui::UiBuilder::new()
+                        .id_salt(("table-heading", column))
+                        .max_rect(rect)
+                        .layout(egui::Layout::left_to_right(egui::Align::Center)),
+                );
+                cell.set_clip_rect(ui.clip_rect().intersect(rect));
+                widgets::label(&mut cell, text, 11.0, t.muted);
+                x += w + gap;
+            }
             for i in group {
-                let line = ui.allocate_exact_size(vec2(width - 2.0, 1.0), Sense::hover()).0;
-                ui.painter().rect_filled(line, 0.0, t.border);
-                egui::Frame::new().inner_margin(Margin::symmetric(16, 7)).show(ui, |ui| {
-                    ui.horizontal(|ui| {
-                        ui.allocate_ui_with_layout(
-                            vec2(cols[0], 34.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.set_width(cols[0]);
-                                self.icon(ui, *i, 34.0);
-                            },
-                        );
-                        let e = &self.entries[*i];
-                        ui.allocate_ui_with_layout(
-                            vec2(name_w, 34.0),
-                            egui::Layout::top_down(egui::Align::Min),
-                            |ui| {
-                                ui.set_width(name_w);
-                                ui.spacing_mut().item_spacing.y = 0.0;
-                                ui.label(self.name_job(e, 17.0));
-                                ui.add(
-                                    egui::Label::new(RichText::new(&e.app.tagline).size(12.5).color(t.muted))
-                                        .truncate(),
-                                );
-                            },
-                        );
-                        ui.allocate_ui_with_layout(
-                            vec2(cols[2], 34.0),
-                            egui::Layout::left_to_right(egui::Align::Center),
-                            |ui| {
-                                ui.set_width(cols[2]);
-                                widgets::belt(ui, &t, e.state(), e.busy_label().as_deref());
-                            },
-                        );
-                        let mono = |s: String, c: Color32| RichText::new(s).family(theme::mono()).size(13.0).color(c);
-                        let installed = e.installed.as_ref().map(|i| i.version.clone()).unwrap_or_else(|| "—".into());
-                        let latest = e.latest.as_ref().map(|l| l.version.clone()).unwrap_or_else(|| "—".into());
-                        let released = e
-                            .latest
-                            .as_ref()
-                            .and_then(|l| l.published_at.as_deref())
-                            .and_then(format::date)
-                            .unwrap_or_else(|| "—".into());
-                        let latest_color = if e.state() == State::UpdateAvailable { t.good } else { t.text };
-                        for (text, w, c) in [
-                            (installed, cols[3], t.text),
-                            (latest, cols[4], latest_color),
-                            (released, cols[5], t.muted),
-                        ] {
-                            ui.allocate_ui_with_layout(
-                                vec2(w, 34.0),
-                                egui::Layout::left_to_right(egui::Align::Center),
-                                |ui| {
-                                    ui.set_width(w);
-                                    ui.label(mono(text, c));
-                                },
+                let row = ui.allocate_exact_size(vec2(width - 2.0, 58.0), Sense::hover()).0;
+                ui.painter().line_segment([row.left_top(), row.right_top()], Stroke::new(1.0, t.border));
+                let app_id = self.entries[*i].app.id.clone();
+                let mut x = row.left() + f32::from(CARD_PAD);
+                for &column in order {
+                    let w = cols[column];
+                    let rect = egui::Rect::from_min_size(egui::pos2(x, row.top()), vec2(w, row.height()));
+                    let layout = if column == 6 {
+                        egui::Layout::right_to_left(egui::Align::Center)
+                    } else {
+                        egui::Layout::left_to_right(egui::Align::Center)
+                    };
+                    let mut cell = ui.new_child(
+                        egui::UiBuilder::new().id_salt(("table-cell", &app_id, column)).max_rect(rect).layout(layout),
+                    );
+                    cell.set_clip_rect(ui.clip_rect().intersect(rect));
+                    let e = &self.entries[*i];
+                    match column {
+                        0 => self.icon(&mut cell, *i, 34.0),
+                        1 => {
+                            let name_rect = rect.shrink2(vec2(0.0, (row.height() - 36.0) / 2.0));
+                            let mut name = cell.new_child(
+                                egui::UiBuilder::new()
+                                    .max_rect(name_rect)
+                                    .layout(egui::Layout::top_down(egui::Align::Min)),
                             );
+                            name.spacing_mut().item_spacing.y = 0.0;
+                            name.add(egui::Label::new(self.name_job(e, 17.0)).truncate());
+                            let detail = if compact {
+                                let version = e
+                                    .installed
+                                    .as_ref()
+                                    .map(|installed| &installed.version)
+                                    .or_else(|| e.latest.as_ref().map(|latest| &latest.version));
+                                version
+                                    .map(|version| format!("{version} · {}", e.app.tagline))
+                                    .unwrap_or_else(|| e.app.tagline.clone())
+                            } else {
+                                e.app.tagline.clone()
+                            };
+                            name.add(egui::Label::new(RichText::new(detail).size(12.5).color(t.muted)).truncate());
                         }
-                        ui.with_layout(egui::Layout::right_to_left(egui::Align::Center), |ui| {
-                            ui.spacing_mut().item_spacing.x = 8.0;
-                            self.more_menu(ui, *i, actions);
-                            let e = &self.entries[*i];
+                        2 => {
+                            widgets::belt(&mut cell, &t, e.state(), e.busy_label().as_deref());
+                        }
+                        3..=5 => {
+                            let text = match column {
+                                3 => e.installed.as_ref().map(|installed| installed.version.clone()),
+                                4 => e.latest.as_ref().map(|latest| latest.version.clone()),
+                                _ => e
+                                    .latest
+                                    .as_ref()
+                                    .and_then(|latest| latest.published_at.as_deref())
+                                    .and_then(format::date),
+                            }
+                            .unwrap_or_else(|| "—".into());
+                            let color = if column == 5 {
+                                t.muted
+                            } else if column == 4 && e.state() == State::UpdateAvailable {
+                                t.good
+                            } else {
+                                t.text
+                            };
+                            cell.add(
+                                egui::Label::new(RichText::new(&text).family(theme::mono()).size(13.0).color(color))
+                                    .truncate(),
+                            )
+                            .on_hover_text(text);
+                        }
+                        _ => {
+                            cell.spacing_mut().item_spacing.x = 8.0;
+                            self.more_menu(&mut cell, *i, actions);
                             let id = e.app.id.clone();
                             match (e.busy.is_some(), e.state()) {
                                 (true, _) => {}
                                 (_, State::UpdateAvailable) => {
-                                    if widgets::button(ui, &t, "Update", Kind::Primary, 120.0, true).clicked() {
+                                    if widgets::button(&mut cell, &t, "Update", Kind::Primary, 120.0, true).clicked() {
                                         actions.push(Action::Install(id));
                                     }
                                 }
                                 (_, State::UpToDate | State::Installed) => {
-                                    if widgets::button(ui, &t, "Open", Kind::Secondary, 120.0, true).clicked() {
+                                    if widgets::button(&mut cell, &t, "Open", Kind::Secondary, 120.0, true).clicked() {
                                         actions.push(Action::Open(id));
                                     }
                                 }
                                 (_, State::NotInstalled) => {
-                                    if widgets::button(ui, &t, "Install", Kind::Primary, 120.0, true).clicked() {
+                                    if widgets::button(&mut cell, &t, "Install", Kind::Primary, 120.0, true).clicked() {
                                         actions.push(Action::Install(id));
                                     }
                                 }
                                 (_, State::Unavailable) => {}
                             }
-                        });
-                    });
-                });
+                        }
+                    }
+                    x += w + gap;
+                }
             }
         });
     }

@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.3.4
+
+- Add TypeDojo to the catalog with its original icon and verified macOS Apple Silicon release.
+- Align card action rows and metadata slots; keep toolbar and list actions accessible in compact windows.
+- Count only installable dojos in Available; keep apps without a compatible release under Not available in All.
+- Show No updates found instead of claiming every app is current when no update is known.
+- Verify TypeDojo install, replacement and checksum refusal against its actual public release.
+
 ## 0.3.3
 
 The logo, tuned for every size.

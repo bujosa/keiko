@@ -1,31 +1,46 @@
-//! Installs PodDojo's latest release for real into a temporary folder. Needs the network (and, while
-//! PodDojo is private, `gh auth login`): `cargo test -p keiko-native -- --ignored`.
+//! Installs each dojo’s latest public release into a temporary folder. Needs the network:
+//! `KEIKO_NO_GH=1 cargo test -p keiko-native -- --ignored`.
 
 use keiko_core::Catalog;
 use keiko_native::{Paths, detect, github, install};
 
 #[test]
 #[ignore = "network"]
-fn installs_and_updates_poddojo() {
-    let root = std::env::temp_dir().join(format!("keiko-live-{}", std::process::id()));
+fn installs_and_updates_poddojo() -> Result<(), String> {
+    installs_updates_and_preserves_on_bad_checksum("poddojo")
+}
+
+#[test]
+#[ignore = "network"]
+fn installs_and_updates_typedojo() -> Result<(), String> {
+    installs_updates_and_preserves_on_bad_checksum("typedojo")
+}
+
+fn installs_updates_and_preserves_on_bad_checksum(id: &str) -> Result<(), String> {
+    let root = std::env::temp_dir().join(format!("keiko-live-{id}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);
     let paths = Paths::for_tests(&root);
-    let app = Catalog::bundled().unwrap().get("poddojo").unwrap().clone();
-    let latest = github::latest(&app).unwrap().expect("a release");
-    let phases = std::sync::Mutex::new(vec![]);
-    let installed = install::install(&paths, &app, &latest, None, &|p| phases.lock().unwrap().push(p)).unwrap();
+    let app = Catalog::bundled()?.get(id).ok_or_else(|| format!("missing catalog entry: {id}"))?.clone();
+    let latest = github::latest(&app)?.ok_or_else(|| format!("no release for {id}"))?;
+    let verified = std::cell::Cell::new(false);
+    let installed = install::install(&paths, &app, &latest, None, &|p| {
+        if matches!(p, install::Phase::Verifying) {
+            verified.set(true);
+        }
+    })?;
     assert_eq!(installed.version, latest.version);
-    assert_eq!(detect::installed(&paths, &app).unwrap(), installed);
-    assert!(phases.lock().unwrap().iter().any(|p| matches!(p, install::Phase::Verifying)));
+    assert_eq!(detect::installed(&paths, &app), Some(installed.clone()));
+    assert!(verified.get());
     // Installing again replaces the same bundle in place.
-    let again = install::install(&paths, &app, &latest, Some(&installed), &|_| {}).unwrap();
+    let again = install::install(&paths, &app, &latest, Some(&installed), &|_| {})?;
     assert_eq!(again.path, installed.path);
     // A tampered checksum is refused and the installed copy stays.
     let mut bad = latest.clone();
-    bad.asset.as_mut().unwrap().name = "PodDojo-not-listed.zip".into();
+    bad.asset.as_mut().ok_or("missing release asset")?.name = format!("{id}-not-listed.zip");
     assert!(install::install(&paths, &app, &bad, Some(&again), &|_| {}).is_err());
-    assert!(detect::installed(&paths, &app).is_some());
+    assert_eq!(detect::installed(&paths, &app), Some(again));
     let _ = std::fs::remove_dir_all(&root);
+    Ok(())
 }
 
 #[test]

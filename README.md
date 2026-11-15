@@ -34,6 +34,7 @@ through.
 | Dojo | What you practise | Repository |
 |---|---|---|
 | **PodDojo** | Docker and the CKAD: auto-graded labs on a real cluster, timed mock exams, spaced review | [bujosa/poddojo](https://github.com/bujosa/poddojo) |
+| **TypeDojo** | TypeScript: 53 readings, guided exercises and independent labs; a native editor with Run, Debug and offline Prettier | [bujosa/typedojo](https://github.com/bujosa/typedojo) |
 
 More are coming. A dojo is any app with GitHub releases that follows a few rules; see
 [docs/adding-a-dojo.md](docs/adding-a-dojo.md).

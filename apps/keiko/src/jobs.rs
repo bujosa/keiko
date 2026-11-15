@@ -75,9 +75,9 @@ impl Jobs {
         });
     }
 
-    pub fn uninstall(&self, app: &App, installed: &Installed) {
-        let (app, installed) = (app.clone(), installed.clone());
-        self.spawn(move |send| send(Msg::Uninstalled(app.id.clone(), install::uninstall(&app, &installed))));
+    pub fn uninstall(&self, paths: &Paths, app: &App, installed: &Installed) {
+        let (paths, app, installed) = (paths.clone(), app.clone(), installed.clone());
+        self.spawn(move |send| send(Msg::Uninstalled(app.id.clone(), install::uninstall(&paths, &app, &installed))));
     }
 
     /// Run a quick system action (open, reveal, browse, notify) and report only failures.

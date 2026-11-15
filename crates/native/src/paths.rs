@@ -9,6 +9,8 @@ pub struct Paths {
     pub data: PathBuf,
     /// Downloads in progress.
     pub cache: PathBuf,
+    /// System Trash normally; a private Trash when both QA overrides are set.
+    pub trash: PathBuf,
     /// Where Keiko installs apps (`~/Applications`: no administrator password needed).
     pub apps: PathBuf,
     /// Folders searched for installed apps, in order.
@@ -27,13 +29,19 @@ impl Paths {
         if std::env::var_os("KEIKO_APPS_DIR").is_none() {
             search.push(PathBuf::from("/Applications"));
         }
-        Ok(Paths { data, cache, apps, search })
+        let trash = if std::env::var_os("KEIKO_HOME").is_some() && std::env::var_os("KEIKO_APPS_DIR").is_some() {
+            data.join("Trash")
+        } else {
+            home.join(".Trash")
+        };
+        Ok(Paths { data, cache, trash, apps, search })
     }
 
     pub fn for_tests(root: &std::path::Path) -> Paths {
         Paths {
             data: root.join("data"),
             cache: root.join("cache"),
+            trash: root.join("Trash"),
             apps: root.join("Applications"),
             search: vec![root.join("Applications")],
         }

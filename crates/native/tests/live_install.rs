@@ -38,6 +38,15 @@ fn installs_updates_and_preserves_on_bad_checksum(id: &str) -> Result<(), String
     let mut bad = latest.clone();
     bad.asset.as_mut().ok_or("missing release asset")?.name = format!("{id}-not-listed.zip");
     assert!(install::install(&paths, &app, &bad, Some(&again), &|_| {}).is_err());
+    assert_eq!(detect::installed(&paths, &app), Some(again.clone()));
+    std::fs::create_dir_all(&paths.data).map_err(|e| e.to_string())?;
+    let progress = paths.data.join("learner-progress.json");
+    std::fs::write(&progress, b"saved learner draft").map_err(|e| e.to_string())?;
+    let trashed = install::uninstall(&paths, &app, &again)?;
+    assert!(detect::installed(&paths, &app).is_none());
+    install::check_bundle(&trashed, &app)?;
+    assert_eq!(std::fs::read(&progress).map_err(|e| e.to_string())?, b"saved learner draft");
+    std::fs::rename(&trashed, &again.path).map_err(|e| e.to_string())?;
     assert_eq!(detect::installed(&paths, &app), Some(again));
     let _ = std::fs::remove_dir_all(&root);
     Ok(())

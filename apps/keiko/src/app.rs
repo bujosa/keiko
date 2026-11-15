@@ -155,8 +155,9 @@ static LOGO: &[u8] = include_bytes!("../../../assets/app-icon/keiko-256.png");
 /// The small drawing (no frame, a larger glyph) for the top bar and the banner.
 static LOGO_SMALL: &[u8] = include_bytes!("../../../assets/app-icon/keiko-small-128.png");
 
-fn texture(ctx: &egui::Context, name: &str, png: &[u8]) -> Option<egui::TextureHandle> {
-    let img = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?.to_rgba8();
+fn texture(ctx: &egui::Context, name: &str, png: &[u8], monochrome: bool) -> Option<egui::TextureHandle> {
+    let decoded = image::load_from_memory_with_format(png, image::ImageFormat::Png).ok()?;
+    let img = if monochrome { decoded.grayscale().to_rgba8() } else { decoded.to_rgba8() };
     let size = [img.width() as usize, img.height() as usize];
     let color = egui::ColorImage::from_rgba_unmultiplied(size, img.as_raw());
     Some(ctx.load_texture(name, color, egui::TextureOptions::LINEAR))
@@ -216,7 +217,7 @@ impl KeikoApp {
             });
         }
         let mut textures = HashMap::new();
-        if let Some(tex) = texture(ctx, "keiko-small", LOGO_SMALL) {
+        if let Some(tex) = texture(ctx, "keiko-small", LOGO_SMALL, false) {
             textures.insert("keiko-small".to_string(), tex);
         }
         let shot = std::env::var_os("KEIKO_SCREENSHOT").map(|p| (PathBuf::from(p), Instant::now(), false));
@@ -779,10 +780,12 @@ impl KeikoApp {
             first = false;
             widgets::section_title(ui, &t, &format!("{title} · {}", group.len()));
             ui.add_space(12.0);
-            match self.settings.view {
+            // Recreate layout state when membership moves between Installed and Available.
+            let members: Vec<String> = group.iter().map(|i| self.entries[*i].app.id.clone()).collect();
+            ui.push_id(("dojo-section", title, members), |ui| match self.settings.view {
                 View::Grid => self.grid(ui, &group, actions),
                 View::List => self.list(ui, &group, actions),
-            }
+            });
         }
     }
 
@@ -863,33 +866,56 @@ impl KeikoApp {
         ui.add_space(24.0);
     }
 
-    fn icon(&mut self, ui: &mut Ui, i: usize, size: f32) {
+    /// Installed and active jobs keep their colour. Missing apps wake up on hover.
+    fn colour_reveal(&self, ctx: &egui::Context, i: usize, hovered: bool) -> f32 {
+        let e = &self.entries[i];
+        ctx.animate_bool_with_time(
+            egui::Id::new(("dojo-colour", &e.app.id)),
+            e.installed.is_some() || e.busy.is_some() || hovered,
+            0.18,
+        )
+    }
+
+    fn icon(&mut self, ui: &mut Ui, i: usize, size: f32, reveal: f32) {
         let id = self.entries[i].app.id.clone();
-        if !self.textures.contains_key(&id)
-            && let Some(png) = app_png(&id)
-            && let Some(tex) = texture(ui.ctx(), &id, png)
-        {
-            self.textures.insert(id.clone(), tex);
-        }
-        match self.textures.get(&id) {
-            Some(tex) => {
-                // Dojo icons follow Apple's grid (artwork 100..924 of 1024): show the artwork only.
-                ui.add(egui::Image::new((tex.id(), vec2(size, size))).uv(GRID));
+        let grey_id = format!("{id}-monochrome");
+        for (key, monochrome) in [(&id, false), (&grey_id, true)] {
+            if !self.textures.contains_key(key)
+                && let Some(png) = app_png(&id)
+                && let Some(tex) = texture(ui.ctx(), key, png, monochrome)
+            {
+                self.textures.insert(key.clone(), tex);
             }
-            None => {
+        }
+        match (self.textures.get(&id), self.textures.get(&grey_id)) {
+            (Some(colour), Some(grey)) => {
+                // Keep the image widget's accessibility semantics while blending cached views.
+                let rect = ui
+                    .add(
+                        egui::Image::new((grey.id(), vec2(size, size)))
+                            .uv(GRID)
+                            .tint(Color32::WHITE.gamma_multiply(0.76 * (1.0 - reveal))),
+                    )
+                    .rect;
+                if reveal > 0.0 {
+                    ui.painter().image(colour.id(), rect, GRID, Color32::WHITE.gamma_multiply(reveal));
+                }
+            }
+            _ => {
                 let [r, g, b] = self.entries[i].app.color;
-                widgets::initial_tile(ui, Color32::from_rgb(r, g, b), &self.entries[i].app.name, size);
+                let colour = self.t.muted.lerp_to_gamma(Color32::from_rgb(r, g, b), reveal);
+                widgets::initial_tile(ui, colour, &self.entries[i].app.name, size);
             }
         }
     }
 
-    fn name_job(&self, e: &Entry, size: f32) -> LayoutJob {
+    fn name_job(&self, e: &Entry, size: f32, reveal: f32) -> LayoutJob {
         let [r, g, b] = e.app.color;
         let (head, tail) = e.app.name_parts();
         let mut job = LayoutJob::default();
         let fmt = |color| TextFormat { font_id: FontId::new(size, theme::display()), color, ..Default::default() };
-        job.append(head, 0.0, fmt(self.t.text));
-        job.append(tail, 0.0, fmt(Color32::from_rgb(r, g, b)));
+        job.append(head, 0.0, fmt(self.t.muted.lerp_to_gamma(self.t.text, reveal)));
+        job.append(tail, 0.0, fmt(self.t.muted.lerp_to_gamma(Color32::from_rgb(r, g, b), reveal)));
         job
     }
 
@@ -915,7 +941,9 @@ impl KeikoApp {
         let t = self.t;
         let id = egui::Id::new(("card", &self.entries[i].app.id));
         let hovered_before = ui.ctx().data(|d| d.get_temp::<bool>(id)).unwrap_or(false);
-        let fill = if hovered_before { t.card_hover } else { t.card };
+        let reveal = self.colour_reveal(ui.ctx(), i, hovered_before);
+        let resting = if t.dark { t.bg } else { t.panel };
+        let fill = resting.lerp_to_gamma(if hovered_before { t.card_hover } else { t.card }, reveal);
         let [r, g, b] = self.entries[i].app.color;
         let app_color = Color32::from_rgb(r, g, b);
         let inner = egui::Frame::new().fill(fill).stroke(Stroke::new(1.0, t.border)).show(ui, |ui| {
@@ -939,7 +967,7 @@ impl KeikoApp {
             let body_height = (self.card_h - CARD_HEADER_H - 1.0 - f32::from(CARD_PAD) * 2.0).max(0.0);
             let body = egui::Frame::new().inner_margin(Margin::same(CARD_PAD)).show(ui, |ui| {
                 ui.spacing_mut().item_spacing.y = 0.0;
-                self.card_body(ui, i, body_height, actions)
+                self.card_body(ui, i, body_height, reveal, actions)
             });
             let intrinsic = CARD_HEADER_H + 1.0 + f32::from(CARD_PAD) * 2.0 + body.inner;
             self.next_card_h = self.next_card_h.max(intrinsic);
@@ -969,17 +997,17 @@ impl KeikoApp {
         }
     }
 
-    fn card_body(&mut self, ui: &mut Ui, i: usize, height: f32, actions: &mut Vec<Action>) -> f32 {
+    fn card_body(&mut self, ui: &mut Ui, i: usize, height: f32, reveal: f32, actions: &mut Vec<Action>) -> f32 {
         let t = self.t;
         let content_w = ui.available_width();
         let top = ui.cursor().top();
         ui.allocate_ui_with_layout(vec2(content_w, 48.0), egui::Layout::left_to_right(egui::Align::Center), |ui| {
             ui.spacing_mut().item_spacing.x = 12.0;
-            self.icon(ui, i, 44.0);
+            self.icon(ui, i, 44.0, reveal);
             ui.vertical(|ui| {
                 ui.spacing_mut().item_spacing.y = 3.0;
                 ui.add_space(2.0);
-                ui.add(egui::Label::new(self.name_job(&self.entries[i], 20.0)).truncate());
+                ui.add(egui::Label::new(self.name_job(&self.entries[i], 20.0, reveal)).truncate());
                 ui.add(
                     egui::Label::new(RichText::new(&self.entries[i].app.tagline).size(13.5).color(t.muted)).truncate(),
                 );
@@ -991,7 +1019,7 @@ impl KeikoApp {
         let mut job = LayoutJob::simple(
             e.app.description.clone(),
             FontId::new(13.5, egui::FontFamily::Proportional),
-            t.text.gamma_multiply(0.85),
+            t.muted.lerp_to_gamma(t.text.gamma_multiply(0.85), reveal),
             content_w,
         );
         job.wrap.max_rows = 2;
@@ -1145,6 +1173,7 @@ impl KeikoApp {
                 let row = ui.allocate_exact_size(vec2(width - 2.0, 58.0), Sense::hover()).0;
                 ui.painter().line_segment([row.left_top(), row.right_top()], Stroke::new(1.0, t.border));
                 let app_id = self.entries[*i].app.id.clone();
+                let reveal = self.colour_reveal(ui.ctx(), *i, ui.rect_contains_pointer(row));
                 let mut x = row.left() + f32::from(CARD_PAD);
                 for &column in order {
                     let w = cols[column];
@@ -1160,7 +1189,7 @@ impl KeikoApp {
                     cell.set_clip_rect(ui.clip_rect().intersect(rect));
                     let e = &self.entries[*i];
                     match column {
-                        0 => self.icon(&mut cell, *i, 34.0),
+                        0 => self.icon(&mut cell, *i, 34.0, reveal),
                         1 => {
                             let name_rect = rect.shrink2(vec2(0.0, (row.height() - 36.0) / 2.0));
                             let mut name = cell.new_child(
@@ -1169,7 +1198,7 @@ impl KeikoApp {
                                     .layout(egui::Layout::top_down(egui::Align::Min)),
                             );
                             name.spacing_mut().item_spacing.y = 0.0;
-                            name.add(egui::Label::new(self.name_job(e, 17.0)).truncate());
+                            name.add(egui::Label::new(self.name_job(e, 17.0, reveal)).truncate());
                             let detail = if compact {
                                 let version = e
                                     .installed

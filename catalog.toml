@@ -30,6 +30,18 @@ asset = "TypeDojo-v{version}-macos-{arch}.zip"
 checksums = "SHA256SUMS.txt"
 color = [135, 186, 247]
 
+[[apps]]
+id = "pydojo"
+name = "PyDojo"
+tagline = "Python, from your first values to engineering projects"
+description = "Forty-three hands-on labs with guided practice, a real Python runtime, debugging, formatting and saved progress."
+repo = "bujosa/pydojo"
+mac_bundle_name = "PyDojo"
+mac_bundle_id = "dev.bujosa.pydojo"
+asset = "PyDojo-v{version}-macos-{arch}.zip"
+checksums = "SHA256SUMS.txt"
+color = [142, 219, 184]
+
 # Keiko itself: checked like any dojo and updated in place ("Update and restart").
 [launcher]
 id = "keiko"

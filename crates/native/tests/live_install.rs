@@ -16,6 +16,12 @@ fn installs_and_updates_typedojo() -> Result<(), String> {
     installs_updates_and_preserves_on_bad_checksum("typedojo")
 }
 
+#[test]
+#[ignore = "network"]
+fn installs_and_updates_pydojo() -> Result<(), String> {
+    installs_updates_and_preserves_on_bad_checksum("pydojo")
+}
+
 fn installs_updates_and_preserves_on_bad_checksum(id: &str) -> Result<(), String> {
     let root = std::env::temp_dir().join(format!("keiko-live-{id}-{}", std::process::id()));
     let _ = std::fs::remove_dir_all(&root);

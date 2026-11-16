@@ -35,6 +35,7 @@ through.
 |---|---|---|
 | **PodDojo** | Docker and the CKAD: auto-graded labs on a real cluster, timed mock exams, spaced review | [bujosa/poddojo](https://github.com/bujosa/poddojo) |
 | **TypeDojo** | TypeScript: 53 readings, guided exercises and independent labs; a native editor with Run, Debug and offline Prettier | [bujosa/typedojo](https://github.com/bujosa/typedojo) |
+| **PyDojo** | Python: 43 illustrated lessons, guided practices and independent labs; bundled Python/Ruff, Run and Debug | [bujosa/pydojo](https://github.com/bujosa/pydojo) |
 
 More are coming. A dojo is any app with GitHub releases that follows a few rules; see
 [docs/adding-a-dojo.md](docs/adding-a-dojo.md).
@@ -84,7 +85,7 @@ line), and not forwarded when GitHub redirects a download to its file storage.
 cargo run -p keiko --release        # run it
 cargo xtask bundle --install        # build, sign and install Keiko.app in ~/Applications
 cargo xtask ci                      # fmt, clippy -D warnings, tests
-cargo test -p keiko-native -- --ignored   # installs PodDojo for real into a temp folder (network)
+cargo test -p keiko-native -- --ignored   # verifies every dojo and launcher update in temp folders (network)
 ```
 
 Rust 1.99 (pinned in `rust-toolchain.toml`). `KEIKO_HOME` and `KEIKO_APPS_DIR` move Keiko's data

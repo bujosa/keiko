@@ -137,6 +137,7 @@ fn app_png(id: &str) -> Option<&'static [u8]> {
     match id {
         "poddojo" => Some(include_bytes!("../../../assets/apps/poddojo.png")),
         "typedojo" => Some(include_bytes!("../../../assets/apps/typedojo.png")),
+        "pydojo" => Some(include_bytes!("../../../assets/apps/pydojo.png")),
         _ => None,
     }
 }

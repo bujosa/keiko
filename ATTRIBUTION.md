@@ -12,3 +12,5 @@
 
 The fonts are the Latin subsets distributed by Fontsource. egui's bundled fonts (Ubuntu, Hack,
 Noto Emoji) are used as fallbacks under their own licenses.
+
+The PyDojo application icon is original suite artwork from `bujosa/pydojo`, distributed under MIT OR Apache-2.0.
